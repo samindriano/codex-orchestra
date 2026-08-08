@@ -2,21 +2,20 @@
 
 Only MAIN may edit this file.
 
-- **Phase:** `BOOTSTRAP_COORDINATION`
+- **Phase:** `DATA_GATE_BACKFILL_AND_RECONCILIATION`
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
+- **Primary repository:** `samindriano/idx-trade`
+- **Audited source commit:** `1ebfe62545993a3cd578127594216479f1730468`
 - **Integration branch:** `main`
-- **Current working branch:** `codex/idx-trade-orchestrator`
 - **Market / venue:** `IDX listed equities / REGULAR / daily-EOD`
-- **Data foundation:** `PRESENT_IN_REPOSITORY; RESEARCH_GATE_NOT_PASSED`
-- **Research source approval:** `NOT_APPROVED_FOR_PIT_EVALUATION`
-- **Training / prediction / monitoring / trading:** `DISABLED`
-- **Active tasks:** `IDX-EXP-001`, `IDX-VAL-001`, `IDX-DATA-001`, `IDX-PROD-001`
-- **Web task:** `NOT_STARTED; NO_ACTIVE_WEB_SCOPE`
-- **Blocked:** no model or trading phase until the target, horizon, benchmark,
-  point-in-time universe, source lineage, session protocol, and data-readiness
-  gate are frozen and approved.
-- **Completed handoffs:** none
-- **Next integration action:** MAIN reviews the initial handoffs, reconciles
-  the existing data-foundation contracts with the frozen research
-  specification, and records a GO/NO-GO decision before any new data or model
-  work.
+- **Orchestration default:** `LIGHT`
+- **Root / workers:** `Luna xhigh / Luna xhigh`
+- **Escalation:** `Sol High checkpoint only`
+- **Data foundation:** `IMPLEMENTED; ACTUAL HISTORICAL DATA GATE NOT YET PASSED`
+- **Tradability coverage registry:** `EMPTY_BY_DEFAULT; NO COMPLETE WINDOW CLAIMED`
+- **Model / SR / probability / Kelly:** `BLOCKED_UNTIL_DATA_GATE`
+- **Paper/live trading:** `DISABLED`
+- **Active tasks:** `IDX-DATA-002`, `IDX-VAL-002`
+- **Blocked task:** `IDX-MODEL-001`
+- **Current blockers:** actual EOD backfill, official suspension-source completeness audit, corporate-action verification, adversarial gate, full-universe gate.
+- **Next milestone:** produce auditable data-gate artifacts for a candidate historical period and determine PASS/FAIL/UNKNOWN without weakening the gate.
