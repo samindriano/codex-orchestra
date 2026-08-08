@@ -7,7 +7,7 @@ Only MAIN edits this file.
 - **Project ID:** `idx-trade-v0`
 - **Project:** IDX daily/EOD trade-setup research
 - **Primary repository:** `samindriano/idx-trade`
-- **Audited source commit:** `1ebfe62545993a3cd578127594216479f1730468`
+- **Current source commit:** `3a7d7d4a47d9f69c9e285bf5c0b4292e392beed7`
 - **Integration branch:** `main`
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
 - **Initial venue:** IDX `REGULAR` market
@@ -17,7 +17,7 @@ Only MAIN edits this file.
 
 Authorized now:
 
-- official IDX identity/tradability source audit and ingestion;
+- official IDX identity/tradability/session source audit and ingestion;
 - Yahoo daily/EOD research backfill with raw prices preserved;
 - corporate-action and provider-gap verification;
 - adversarial and full-universe DATA GATE work;
@@ -54,22 +54,27 @@ The user may override this at any time.
 | Role | Owned scope |
 |---|---|
 | RESEARCH / EXPERIMENT | methodology proposals and bounded research questions; no silent target/gate changes |
-| VALIDATION | tests, point-in-time/leakage audit, snapshot reconciliation, gate integrity |
-| DATA | IDX/Yahoo providers, security/tradability state, coverage, backfill, data gate, config data contracts |
+| VALIDATION | tests, point-in-time/leakage audit, official-session/snapshot reconciliation, gate integrity |
+| DATA | IDX/Yahoo providers, security/tradability/session state, coverage, backfill, data gate, config data contracts |
 | PRODUCTION | storage/provenance/package architecture and later simulator/runtime contracts |
 | WEB | no active scope |
 
 ## DATA GATE sequence
 
 1. official listing/delisting identity reference;
-2. Regular-Market suspension/resumption reconstruction;
-3. source-discovery completeness audit + official snapshot reconciliation;
-4. raw Yahoo EOD backfill with revision conflicts surfaced;
-5. corporate-action + raw-price semantic verification;
-6. adversarial QA catalog gate;
-7. full point-in-time universe gate;
-8. freeze versioned data snapshot + provenance;
-9. only then request promotion to setup/SR research.
+2. official IDX Exchange-Day calendar from Digital Statistics;
+3. Regular-Market suspension/resumption reconstruction;
+4. source-discovery completeness audit + official snapshot reconciliation;
+5. raw Yahoo EOD backfill with revision conflicts surfaced;
+6. corporate-action + raw-price semantic verification;
+7. adversarial QA catalog gate;
+8. full point-in-time universe gate;
+9. freeze versioned data snapshot + provenance;
+10. only then request promotion to setup/SR research.
+
+## Known source constraint
+
+The public IDX announcement page states that only three years of announcement data are available there; older historical data is directed to TICMI. Therefore free-only suspension/resumption completeness must not be claimed back to 2009 merely because Yahoo prices exist. Start with the cleanest auditable recent period; extend backward only with appropriate official/licensed evidence.
 
 Outside an audited tradability coverage window, absence of an event is `UNKNOWN`, not `ACTIVE`.
 A shorter clean research period is preferred to a longer guessed one.
