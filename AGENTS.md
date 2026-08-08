@@ -1,127 +1,148 @@
-# IDX Trade V0 working agreement
+# Reusable Codex Orchestra working agreement
 
-## Repository-wide principles
+## Purpose
 
-This repository is **EXPLORATORY_RESEARCH_ONLY**. It is not investment advice
-and must never produce an execution signal, `BUY`, `SELL`, `EXIT`, or a live
-trading workflow. The existing repository contains an IDX data foundation, but
-this orchestration layer does not authorize new market-data acquisition,
-credential use, dataset materialization, model training, tuning, prediction,
-monitoring, paper trading, or real trading. Those phases require a separate
-written authorization and an approved gate.
+This repository is a reusable control plane for multi-agent research and
+engineering work. Project-specific facts belong in
+`coordination/PROJECT_PROFILE.md`; keep this file generic unless the orchestration
+protocol itself changes.
 
-- Do not fabricate market data, performance, rankings, scores, or model state.
-- Do not silently substitute a provider, rewrite historical artifacts, or
-  infer exchange state from missing provider rows.
-- Unknown lineage, provenance, point-in-time identity, timing, entitlement, or
-  session coverage fails closed.
-- Keep raw OHLC execution prices separate from adjusted/vendor information.
-- Preserve the existing IDX source, tests, configuration, and user changes.
-- Never commit credentials, runtime data, model artifacts, or user-specific
-  local paths.
-- Each agent edits only its owned files. Cross-ownership changes require a
-  written handoff and MAIN integration.
+## Non-negotiable principles
 
-## Legacy source policy
+- The user request and the project source of truth are authoritative.
+- Never fabricate code state, test results, data, metrics, research evidence,
+  credentials, or completed work.
+- Unknown provenance, timing, ownership, or validation status fails closed when
+  it can change the decision.
+- Preserve unrelated user changes. Never rewrite history, force-push, hard
+  reset, clean a worktree, or delete artifacts unless explicitly authorized.
+- Never commit credentials, private runtime data, model artifacts, caches, or
+  user-specific local paths.
+- Workers edit only their owned scope. Cross-ownership edits require a handoff
+  and MAIN integration.
+- A successful handoff is evidence, not permission to start the next phase.
 
-`market-movement-analyzer-eventrank-v0` is read-only reference material for
-auditing reusable engineering patterns. The legacy source must not be edited,
-renamed, deleted from, or copied from a dirty worktree. Do not migrate legacy
-weights, predictions, monitoring ledgers, runtime datasets, or old target
-semantics without an explicit audit and approval.
+## Control plane
 
-The current `idx-trade` implementation is the source of truth for IDX-specific
-contracts. A US Stock implementation may be consulted for orchestration
-patterns only; do not copy US-specific market assumptions into this repository.
+The parent/root thread is `MAIN`. MAIN is the sole decomposer, integrator, and
+phase-transition authority.
 
-## IDX Trade identity
+MAIN must:
 
-- Project ID: `idx-trade-v0`
-- Market: Indonesia Stock Exchange listed equities
-- Initial venue: `REGULAR` market
-- Timeframe: daily/EOD
-- Universe: point-in-time and dynamic; never backfill current survivors into
-  historical dates
-- Candidate prediction unit: `security x signal_date` (target semantics remain
-  to be frozen)
-- Candidate forward horizon: daily/EOD forward window (not frozen)
-- Benchmark: not frozen; do not assume IHSG or another index without a written
-  decision
-- Output: research score/ranking candidate only
-- Operating mode: `EXPLORATORY_RESEARCH_ONLY`
+1. orient from the exact repository, branch, HEAD, project profile, team status,
+   task registry, and relevant source contracts;
+2. choose the lightest orchestration level that is still reliable;
+3. delegate concrete, non-overlapping tasks with explicit ownership;
+4. verify handoffs, diffs, tests, and evidence before integration;
+5. record material decisions and blockers;
+6. stop when acceptance criteria are met rather than creating work for idle
+   workers.
 
-The IDX state model keeps listing existence, market-specific tradability, and
-provider availability separate. `UNKNOWN` is a valid state and must not be
-collapsed into `NO_TRADE`, `SUSPENDED`, or background data. Regular-Market
-eligibility, suspension/resumption intervals, IPO warm-up, delisted history,
-corporate-action provenance, and expected-vs-observed session coverage are
-decision-changing controls.
-
-Model work is prohibited until MAIN approves both a frozen research
-specification and a fail-closed data-readiness gate.
-
-## Ownership and coordination
-
-MAIN alone integrates branches and may edit the root working agreement, shared
-coordination state, frozen specification, migration record, and final decision
-log. Only MAIN updates `coordination/TEAM_STATUS.md` and the task registry.
-
-| Role | Owned scope |
-|---|---|
-| EXPERIMENT | `docs/` research questions, source-reuse audits, feature inventory, target and baseline proposals |
-| VALIDATION | `tests/`, data-readiness and leakage audits, evaluation integrity, risk register, adversarial checks |
-| DATA | `src/idx_trade/providers/`, `security_master.py`, `states.py`, `universe.py`, `coverage.py`, `data_gate.py`, and related `config/` contracts |
-| PRODUCTION | `src/idx_trade/data.py`, `storage.py`, `provenance.py`, package/API architecture, artifact contracts, and CLI proposals |
-| WEB | Future `apps/web` or demo-fixture work only after a separate source audit and MAIN approval; no active web scope exists today |
-
-Agents work from isolated branches/worktrees for writers and never merge into
-the integration branch. Read-only workers may inspect the named repository
-without a worktree. Stop on source dirtiness, ownership conflict, missing
-lineage, credential requirements, unauthorized network/data access, or an
-instruction that would require fabricated output. Workers do not spawn nested
-workers.
-
-Every task concludes with
-`coordination/handoffs/<task-id>-<agent>.md` using the repository handoff
-contract. A handoff is evidence, not permission to begin the next phase.
+Workers never spawn nested workers and never merge their own branches.
+Read-only workers may share a checkout; concurrent writers require isolated
+worktrees or otherwise provably disjoint ownership.
 
 ## Orchestration levels
 
-The parent chat is the control plane. Choose the lightest level that is still
-reliable:
+Use levels as coordination intensity, not quotas.
 
-- `DIRECT`: sequential work in the parent chat for tightly bounded tasks.
-- `LIGHT`: one or two bounded, non-overlapping workers for independent audits
-  or reviews; MAIN synthesizes and verifies the result.
-- `HEAVY`: three to six bounded workers only for genuinely open-ended,
-  high-risk, or highly parallelizable work; use isolated worktrees for
-  concurrent writers and a milestone review when the decision is material.
+### DIRECT
 
-The user selects the root model. Do not hardcode or silently switch it. Every
-worker prompt must state the exact repository/worktree, role/question, allowed
-and prohibited changes, deliverable, verification, and dependency or handoff
-condition.
+Use when the task is tightly bounded, sequential, and does not benefit from
+independent parallel work. MAIN performs the work and targeted verification.
 
-For research work, preserve the sequence:
+Typical examples: one bug, one parser, one small refactor, one focused audit,
+one documentation decision.
 
-`hypothesis -> bounded audit/experiment -> compare -> prune -> validate -> integrate`
+### LIGHT
 
-Do not introduce post-holdout tuning, new data, or a new target to rescue a
-failed result. Report `GO` or `NO-GO`, exact evidence, the smallest safe next
-action, and remaining blockers.
+Default for meaningful but bounded work. Use one or two workers when there are
+independent questions such as implementation + tests, or primary audit +
+independent validation. MAIN synthesizes and verifies.
 
-## Git and handoff safety
+### HEAVY
 
-- Use an explicit absolute repository path or `git -C` and verify root,
-  branch, and HEAD before edits.
-- Preserve unrelated user changes; never use `reset --hard`, `clean`, force
-  push, rebase, or history rewriting unless explicitly authorized.
-- MAIN integrates worker branches after checking scope, diff, tests, and
-  provenance. Workers do not merge or push.
-- Runtime data, credentials, generated model artifacts, and local caches stay
-  out of Git.
+Use three to six workers only when work is genuinely parallelizable, high-risk,
+or open-ended. Partition by non-overlapping ownership. Require a milestone
+review before integrating decision-changing results.
 
-Required handoff shape:
+Do not use HEAVY merely because workers are available.
+
+## Model routing
+
+The user's explicit model choice always wins. Never silently change the root
+model or reasoning level.
+
+When the user has not specified a policy, prefer a cost-efficient strong model
+for persistent root and worker execution. A project profile may name an exact
+default (for example `Luna xhigh`).
+
+Use a more expensive/stronger model as a bounded escalation, not as a permanent
+root by default. Escalation is justified for cases such as:
+
+- unresolved architecture conflicts with multiple plausible solutions;
+- repeated integration/debugging failure after bounded attempts;
+- decision-changing methodology or safety review;
+- suspiciously strong research results requiring adversarial review;
+- final high-risk promotion or deployment gate.
+
+An escalation should answer a specific question or certify a checkpoint. After
+that, return to the project default unless the user says otherwise.
+
+Workers do not self-upgrade models. Record `model_used` and `reasoning_level` in
+handoffs when available.
+
+## External research/review threads
+
+A project may use another ChatGPT/research thread as methodology or audit lead.
+Treat only explicit written specifications, linked artifacts, commits, or user
+instructions as transferable state. Do not assume another chat's unstated
+memory. Codex remains responsible for verifying repository state before edits.
+
+## Generic roles
+
+Projects may rename or omit roles in `PROJECT_PROFILE.md`. Common roles are:
+
+| Role | Typical ownership |
+|---|---|
+| RESEARCH / EXPERIMENT | hypotheses, source-reuse audit, candidate designs, experiments |
+| VALIDATION | tests, leakage/integrity checks, risk register, acceptance gates |
+| DATA | ingestion, schemas, identity/provenance, data-readiness contracts |
+| PRODUCTION | package architecture, runtime contracts, integration, CLI/service work |
+| WEB | frontend/API surface when explicitly in scope |
+
+MAIN owns root coordination files and final integration decisions.
+
+## Task contract
+
+Every delegated task must state:
+
+- exact repository/worktree and base commit;
+- role and one bounded question;
+- allowed files/scope and prohibited changes;
+- dependencies and assumptions;
+- required deliverable;
+- validation/evidence required;
+- handoff destination and stopping condition.
+
+Prefer the research loop:
+
+`hypothesis -> bounded work -> compare -> prune -> validate -> integrate`
+
+Do not alter frozen targets, folds, holdouts, acceptance gates, or source data
+post hoc merely to rescue a failed result.
+
+## Coordination files
+
+Only MAIN edits shared coordination state:
+
+- `coordination/PROJECT_PROFILE.md`
+- `coordination/TEAM_STATUS.md`
+- `coordination/TASK_REGISTRY.md`
+- `coordination/DECISIONS.md`
+
+Every delegated task concludes with
+`coordination/handoffs/<task-id>-<role>.md` using this shape:
 
 ```text
 # Handoff
@@ -143,3 +164,12 @@ blocking_risks:
 validation_run:
 recommended_next_action:
 ```
+
+## Git safety
+
+- Verify repository root, branch, HEAD, and worktree cleanliness before edits.
+- Use explicit paths or `git -C` when multiple repositories/worktrees exist.
+- Workers do not merge, rebase, force-push, or rewrite history.
+- MAIN integrates only after checking scope, diff, validation, and provenance.
+- Runtime data and generated artifacts remain outside Git unless the project
+  profile explicitly classifies a small deterministic fixture as source.
