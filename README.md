@@ -12,81 +12,9 @@ No project source code, market/competition data, model artifacts, credentials, o
 
 ## How it works
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#0f172a","lineColor":"#334155","fontFamily":"Inter, ui-sans-serif, system-ui, sans-serif","fontSize":"16px","clusterBkg":"#ffffff","clusterBorder":"#cbd5e1"},"flowchart":{"curve":"basis","nodeSpacing":34,"rankSpacing":46,"padding":14}}}%%
-flowchart TB
-    U([User / research lead]) --> M[MAIN orchestrator]
-    M --> D{Task complexity}
-
-    subgraph SD[DIRECT · one bounded task]
-        direction TB
-        DIRECT[DIRECT]
-        I[Implement + verify]
-        DIRECT --> I
-    end
-
-    subgraph SL[LIGHT · 2–3 independent paths]
-        direction TB
-        LIGHT[LIGHT]
-        W1[Worker A]
-        W2[Worker B]
-        INT[MAIN integrates]
-        LIGHT --> W1
-        LIGHT --> W2
-        W1 --> INT
-        W2 --> INT
-    end
-
-    subgraph SH[HEAVY · parallel / high-risk]
-        direction TB
-        HEAVY[HEAVY]
-        H1[Worker A]
-        H2[Worker B]
-        H3[Worker C]
-        H4[Independent review]
-        HINT[MAIN integrates]
-        HEAVY --> H1
-        HEAVY --> H2
-        HEAVY --> H3
-        HEAVY --> H4
-        H1 --> HINT
-        H2 --> HINT
-        H3 --> HINT
-        H4 --> HINT
-    end
-
-    D -->|small + bounded| DIRECT
-    D -->|2–3 paths| LIGHT
-    D -->|large / high-risk| HEAVY
-
-    I --> G[Validation / gate]
-    INT --> G
-    HINT --> G
-    G -->|PASS| DONE([Done / next task])
-    G -.->|FAIL · revise| M
-
-    classDef user fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0c4a6e,font-weight:700;
-    classDef main fill:#ede9fe,stroke:#7c3aed,stroke-width:2.5px,color:#4c1d95,font-weight:800;
-    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:700;
-    classDef direct fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d,font-weight:700;
-    classDef light fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a,font-weight:700;
-    classDef heavy fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:700;
-    classDef gate fill:#fef3c7,stroke:#ca8a04,stroke-width:2.5px,color:#713f12,font-weight:800;
-    classDef done fill:#dcfce7,stroke:#16a34a,stroke-width:2.5px,color:#14532d,font-weight:800;
-
-    class U user;
-    class M main;
-    class D decision;
-    class DIRECT,I direct;
-    class LIGHT,W1,W2,INT light;
-    class HEAVY,H1,H2,H3,H4,HINT heavy;
-    class G gate;
-    class DONE done;
-
-    style SD fill:#f0fdf4,stroke:#86efac,stroke-width:1.5px
-    style SL fill:#eff6ff,stroke:#93c5fd,stroke-width:1.5px
-    style SH fill:#fef2f2,stroke:#fca5a5,stroke-width:1.5px
-```
+<p align="center">
+  <img src="docs/assets/how-it-works.svg" alt="DIRECT, LIGHT, and HEAVY orchestration flow" width="100%">
+</p>
 
 ### Orchestration levels
 
@@ -100,27 +28,9 @@ The rule is simple: **do not spawn workers just because slots exist.** Start DIR
 
 ## Model routing
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#0f172a","lineColor":"#475569","fontFamily":"Inter, ui-sans-serif, system-ui, sans-serif","fontSize":"16px"},"flowchart":{"curve":"basis","nodeSpacing":38,"rankSpacing":42,"padding":12}}}%%
-flowchart LR
-    A([Normal task]) --> L[Luna xhigh · root]
-    L --> W[Luna xhigh · workers]
-    W --> R{Result clean?}
-    R -->|yes| C([Integrate])
-    R -->|ambiguous / high-risk| S[Escalation checkpoint]
-    S --> SOL[Sol High]
-    SOL --> C
-
-    classDef normal fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a,font-weight:700;
-    classDef decision fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#78350f,font-weight:700;
-    classDef escalation fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d,font-weight:700;
-    classDef done fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d,font-weight:700;
-
-    class A,L,W normal;
-    class R decision;
-    class S,SOL escalation;
-    class C done;
-```
+<p align="center">
+  <img src="docs/assets/model-routing.svg" alt="Default model routing and bounded escalation" width="72%">
+</p>
 
 Default philosophy:
 
@@ -133,45 +43,13 @@ For the current IDX workflow, the intended mapping is **Luna xhigh** for root/wo
 
 ## Control plane
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"background":"#ffffff","primaryTextColor":"#0f172a","lineColor":"#475569","fontFamily":"Inter, ui-sans-serif, system-ui, sans-serif","fontSize":"16px"},"flowchart":{"curve":"basis","nodeSpacing":34,"rankSpacing":42,"padding":12}}}%%
-flowchart LR
-    subgraph CONFIG[Project control files]
-        direction TB
-        P[PROJECT_PROFILE.md]
-        S[TEAM_STATUS.md]
-        T[TASK_REGISTRY.md]
-        D[DECISIONS.md]
-    end
-
-    M[MAIN integrator]
-    W[Workers]
-    H[handoffs/]
-
-    P --> M
-    S --> M
-    T --> M
-    D --> M
-    M --> W
-    W --> H
-    H --> M
-    M --> S
-    M --> T
-    M --> D
-
-    classDef config fill:#f8fafc,stroke:#64748b,stroke-width:1.8px,color:#0f172a;
-    classDef main fill:#ede9fe,stroke:#7c3aed,stroke-width:2.5px,color:#4c1d95,font-weight:800;
-    classDef worker fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#1e3a8a,font-weight:700;
-    classDef handoff fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#14532d,font-weight:700;
-
-    class P,S,T,D config;
-    class M main;
-    class W worker;
-    class H handoff;
-    style CONFIG fill:#ffffff,stroke:#cbd5e1,stroke-width:1.5px
-```
+<p align="center">
+  <img src="docs/assets/control-plane.svg" alt="Codex Orchestra control plane" width="88%">
+</p>
 
 `MAIN` is the single integrator. Workers execute bounded assignments and return evidence through handoffs; they do not independently redefine project scope or orchestration policy.
+
+> The diagrams above are static SVGs generated from Graphviz-style layouts with a fixed white canvas, so GitHub dark mode does not alter their background, colors, line weight, or text layout.
 
 ## Recommended use
 
