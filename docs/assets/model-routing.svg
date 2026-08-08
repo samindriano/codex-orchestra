@@ -10,6 +10,7 @@
     .label { font-size:16px; font-weight:600; }
     .edge { stroke:#334155; stroke-width:2; fill:none; marker-end:url(#arrow); }
     .edge-green { stroke:#16a34a; stroke-width:2; fill:none; marker-end:url(#arrowGreen); }
+    .edge-green-plain { stroke:#16a34a; stroke-width:2; fill:none; }
     .edge-red { stroke:#dc2626; stroke-width:2; fill:none; marker-end:url(#arrowRed); }
   </style>
 </defs>
@@ -26,8 +27,9 @@
 <line x1="800" y1="212" x2="850" y2="212" class="edge"/>
 <polygon points="900,160 970,212 900,264 830,212" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
 <text x="900" y="218" text-anchor="middle" class="txt label">Result clean?</text>
-<path d="M900 264 V300 H745 V330" class="edge-green"/>
-<text x="770" y="294" class="txt small" fill="#15803d">yes</text>
+<path d="M900 264 V300 H745" class="edge-green-plain"/>
+<line x1="745" y1="300" x2="745" y2="330" class="edge-green"/>
+<text x="760" y="294" class="txt small" fill="#15803d">yes</text>
 <rect x="650" y="332" width="190" height="48" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
 <text x="745" y="362" text-anchor="middle" class="txt label">Integrate</text>
 <path d="M970 212 H990 V420 H760" class="edge-red"/>
