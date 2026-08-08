@@ -1,127 +1,137 @@
-# IDX Trade V0 working agreement
+# IDX Trade working agreement
 
 ## Repository-wide principles
 
-This repository is **EXPLORATORY_RESEARCH_ONLY**. It is not investment advice
-and must never produce an execution signal, `BUY`, `SELL`, `EXIT`, or a live
-trading workflow. The existing repository contains an IDX data foundation, but
-this orchestration layer does not authorize new market-data acquisition,
-credential use, dataset materialization, model training, tuning, prediction,
-monitoring, paper trading, or real trading. Those phases require a separate
-written authorization and an approved gate.
+This project is **EXPLORATORY_RESEARCH_ONLY**. It is not investment advice and
+must not silently become a live trading system.
 
-- Do not fabricate market data, performance, rankings, scores, or model state.
-- Do not silently substitute a provider, rewrite historical artifacts, or
-  infer exchange state from missing provider rows.
-- Unknown lineage, provenance, point-in-time identity, timing, entitlement, or
-  session coverage fails closed.
+The current authorized phase is the IDX **DATA GATE**: point-in-time identity,
+Regular-Market tradability reconstruction, raw EOD backfill, corporate-action
+verification, provider-gap classification, adversarial QA, full-universe
+coverage, and reproducibility/provenance work required to certify a research
+period.
+
+Model/SR/probability/Kelly work remains blocked until the DATA GATE passes and
+MAIN/user explicitly promotes the phase.
+
+Non-negotiable rules:
+
+- Do not fabricate market data, exchange state, performance, scores, or model state.
+- Do not infer `SUSPENDED`, `NO_TRADE`, or `DATA_MISSING` from an absent Yahoo/provider row.
+- Outside an audited tradability coverage window, missing suspension evidence resolves to `UNKNOWN`, not `ACTIVE`.
+- Keep listing existence, market-specific tradability, and provider availability separate.
 - Keep raw OHLC execution prices separate from adjusted/vendor information.
-- Preserve the existing IDX source, tests, configuration, and user changes.
-- Never commit credentials, runtime data, model artifacts, or user-specific
-  local paths.
-- Each agent edits only its owned files. Cross-ownership changes require a
-  written handoff and MAIN integration.
+- Historical delisted securities remain eligible historically before their effective delisting date.
+- Current survivors must never be backfilled into historical universes.
+- Preserve unrelated user changes and existing IDX data contracts/tests.
+- Never commit credentials, runtime market data, model artifacts, caches, or user-specific local paths.
+- Each worker edits only its owned scope. Cross-ownership changes require a written handoff and MAIN integration.
 
-## Legacy source policy
+## Sources and lineage
 
-`market-movement-analyzer-eventrank-v0` is read-only reference material for
-auditing reusable engineering patterns. The legacy source must not be edited,
-renamed, deleted from, or copied from a dirty worktree. Do not migrate legacy
-weights, predictions, monitoring ledgers, runtime datasets, or old target
-semantics without an explicit audit and approval.
+Primary implementation source of truth:
 
-The current `idx-trade` implementation is the source of truth for IDX-specific
-contracts. A US Stock implementation may be consulted for orchestration
-patterns only; do not copy US-specific market assumptions into this repository.
+- `samindriano/idx-trade`
+- audited orchestration source commit: `1ebfe62545993a3cd578127594216479f1730468`
+
+`market-movement-analyzer-eventrank-v0` is read-only legacy reference material.
+Do not migrate legacy weights, runtime datasets, predictions, ledgers, old
+BULLISH/BEARISH/NEUTRAL semantics, overloaded confidence fields, or old
+portfolio backtest logic without an explicit audit.
+
+US-stock and Biohub repositories may be consulted for orchestration patterns
+only. Do not copy their domain assumptions into IDX research.
 
 ## IDX Trade identity
 
 - Project ID: `idx-trade-v0`
 - Market: Indonesia Stock Exchange listed equities
-- Initial venue: `REGULAR` market
+- Initial execution venue: `REGULAR`
 - Timeframe: daily/EOD
-- Universe: point-in-time and dynamic; never backfill current survivors into
-  historical dates
-- Candidate prediction unit: `security x signal_date` (target semantics remain
-  to be frozen)
-- Candidate forward horizon: daily/EOD forward window (not frozen)
-- Benchmark: not frozen; do not assume IHSG or another index without a written
-  decision
-- Output: research score/ranking candidate only
+- Universe: point-in-time and dynamic
+- Output direction: setup/opportunity score plus separate calibrated outcome probability and risk metrics; exact modelling semantics remain unfrozen
 - Operating mode: `EXPLORATORY_RESEARCH_ONLY`
 
-The IDX state model keeps listing existence, market-specific tradability, and
-provider availability separate. `UNKNOWN` is a valid state and must not be
-collapsed into `NO_TRADE`, `SUSPENDED`, or background data. Regular-Market
-eligibility, suspension/resumption intervals, IPO warm-up, delisted history,
-corporate-action provenance, and expected-vs-observed session coverage are
-decision-changing controls.
+Current data-gate order:
 
-Model work is prohibited until MAIN approves both a frozen research
-specification and a fail-closed data-readiness gate.
+1. listing/delisting identity;
+2. suspension/resumption reconstruction;
+3. source-discovery completeness + official snapshot reconciliation;
+4. raw Yahoo EOD backfill;
+5. corporate-action/raw-price semantic verification;
+6. adversarial QA gate;
+7. full point-in-time universe gate;
+8. freeze data/provenance snapshot;
+9. request promotion to setup/SR research.
 
-## Ownership and coordination
+A shorter clean historical period is preferred to a longer period with guessed states.
 
-MAIN alone integrates branches and may edit the root working agreement, shared
-coordination state, frozen specification, migration record, and final decision
-log. Only MAIN updates `coordination/TEAM_STATUS.md` and the task registry.
+## Control plane and ownership
+
+MAIN is the sole decomposer, integrator, and phase-transition authority. Only
+MAIN edits shared coordination files.
 
 | Role | Owned scope |
 |---|---|
-| EXPERIMENT | `docs/` research questions, source-reuse audits, feature inventory, target and baseline proposals |
-| VALIDATION | `tests/`, data-readiness and leakage audits, evaluation integrity, risk register, adversarial checks |
-| DATA | `src/idx_trade/providers/`, `security_master.py`, `states.py`, `universe.py`, `coverage.py`, `data_gate.py`, and related `config/` contracts |
-| PRODUCTION | `src/idx_trade/data.py`, `storage.py`, `provenance.py`, package/API architecture, artifact contracts, and CLI proposals |
-| WEB | Future `apps/web` or demo-fixture work only after a separate source audit and MAIN approval; no active web scope exists today |
+| RESEARCH / EXPERIMENT | bounded methodology proposals, source-reuse audit, future target/baseline proposals |
+| VALIDATION | tests, point-in-time/leakage audit, snapshot reconciliation, data-gate integrity, adversarial checks |
+| DATA | `src/idx_trade/providers/`, security/tradability state, universe/coverage/backfill/data-gate logic, related config data contracts |
+| PRODUCTION | storage/provenance/package architecture and later simulator/runtime contracts |
+| WEB | no active scope unless separately authorized |
 
-Agents work from isolated branches/worktrees for writers and never merge into
-the integration branch. Read-only workers may inspect the named repository
-without a worktree. Stop on source dirtiness, ownership conflict, missing
-lineage, credential requirements, unauthorized network/data access, or an
-instruction that would require fabricated output. Workers do not spawn nested
-workers.
-
-Every task concludes with
-`coordination/handoffs/<task-id>-<agent>.md` using the repository handoff
-contract. A handoff is evidence, not permission to begin the next phase.
+Workers never spawn workers. Read-only workers may inspect the canonical
+checkout; concurrent writers require isolated worktrees or provably disjoint
+ownership. Workers never merge or push their own integration.
 
 ## Orchestration levels
 
-The parent chat is the control plane. Choose the lightest level that is still
-reliable:
+Use the lightest reliable level:
 
-- `DIRECT`: sequential work in the parent chat for tightly bounded tasks.
-- `LIGHT`: one or two bounded, non-overlapping workers for independent audits
-  or reviews; MAIN synthesizes and verifies the result.
-- `HEAVY`: three to six bounded workers only for genuinely open-ended,
-  high-risk, or highly parallelizable work; use isolated worktrees for
-  concurrent writers and a milestone review when the decision is material.
+- `DIRECT`: one tightly bounded parser/test/doc/fix or narrow audit.
+- `LIGHT`: default for the current phase; usually one or two independent Luna workers such as implementation + tests/audit.
+- `HEAVY`: three to six workers only when actual backfill/reconciliation has genuinely parallel, non-overlapping critical-path workstreams.
 
-The user selects the root model. Do not hardcode or silently switch it. Every
-worker prompt must state the exact repository/worktree, role/question, allowed
-and prohibited changes, deliverable, verification, and dependency or handoff
-condition.
+Do not keep HEAVY alive for maintenance or because workers are available.
 
-For research work, preserve the sequence:
+## Model routing
+
+The user may override this at any time.
+
+- persistent Codex root default: **Luna xhigh**;
+- normal worker default: **Luna xhigh**;
+- **Sol High** is a bounded escalation model, not the persistent root by default.
+
+Escalate to Sol High only for a specific decision-changing checkpoint, such as:
+
+- unresolved architecture conflict after bounded Luna attempts;
+- repeated integration/debugging failure;
+- pre-model DATA GATE certification;
+- suspiciously strong research result requiring adversarial review;
+- final pre-deployment/live-money review.
+
+After the checkpoint, return to Luna unless the user explicitly changes policy.
+Workers never self-upgrade models.
+
+An external ChatGPT research/audit thread may provide methodology research,
+GitHub audits, and written specifications. Only explicit specs, artifacts,
+commits, or user instructions transfer between chats; Codex must independently
+verify repository state before edits.
+
+## Task and research discipline
+
+Every worker prompt states the exact repository/worktree, base commit, one
+question, owned scope, prohibited changes, deliverable, required validation,
+handoff path, and stop condition.
+
+For research work preserve:
 
 `hypothesis -> bounded audit/experiment -> compare -> prune -> validate -> integrate`
 
-Do not introduce post-holdout tuning, new data, or a new target to rescue a
-failed result. Report `GO` or `NO-GO`, exact evidence, the smallest safe next
-action, and remaining blockers.
+Do not introduce post-holdout tuning, new sources, relaxed data gates, or a new
+target simply to rescue a failed result. `UNKNOWN` remains blocking when it can
+change research validity.
 
-## Git and handoff safety
-
-- Use an explicit absolute repository path or `git -C` and verify root,
-  branch, and HEAD before edits.
-- Preserve unrelated user changes; never use `reset --hard`, `clean`, force
-  push, rebase, or history rewriting unless explicitly authorized.
-- MAIN integrates worker branches after checking scope, diff, tests, and
-  provenance. Workers do not merge or push.
-- Runtime data, credentials, generated model artifacts, and local caches stay
-  out of Git.
-
-Required handoff shape:
+Every task concludes with `coordination/handoffs/<task-id>-<role>.md`:
 
 ```text
 # Handoff
@@ -143,3 +153,12 @@ blocking_risks:
 validation_run:
 recommended_next_action:
 ```
+
+A handoff is evidence, not permission for the next phase.
+
+## Git safety
+
+- Verify exact repo root, branch, HEAD, and worktree state before edits.
+- Preserve unrelated user changes; no hard reset, clean, force push, rebase, or history rewrite unless explicitly authorized.
+- MAIN integrates only after checking scope, diff, tests/validation, and provenance.
+- Runtime market data, credentials, generated models, and local caches stay out of Git.
