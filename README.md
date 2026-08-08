@@ -1,14 +1,21 @@
 # Codex Orchestra - IDX Trade settings
 
-This branch is a settings-only snapshot of the Indo Stock control plane for
-later comparison with the US Stock and Biohub branches.
+IDX-specific orchestration profile for `samindriano/idx-trade`.
 
-- Source repository: `C:/Users/Sam/OneDrive/Documents/Project/idx-trade`
-- Source commit: `776e4c3`
-- Source remote: `samindriano/idx-trade`
+- Source repository: `samindriano/idx-trade`
+- Audited source commit: `1ebfe62545993a3cd578127594216479f1730468`
 - Snapshot branch: `orchestra/idx-trade`
-- Scope: `AGENTS.md`, `coordination/`, and `docs/ORCHESTRATION.md`
-- Excluded: source code, tests, data, models, caches, and runtime artifacts
+- Scope: orchestration/control-plane settings only
+- Excluded: source code, tests, market data, models, caches, credentials, and runtime artifacts
 
-The branch preserves the IDX-specific orchestration topology; it is not a
-proposed unified `main` configuration.
+Current phase: **DATA GATE / historical data-readiness**. Support/resistance,
+model training, probability scoring, Kelly sizing, and paper/live trading remain
+blocked until the gate passes and the phase is explicitly promoted.
+
+Default Codex routing for this project:
+
+- root: `Luna xhigh`
+- workers: `Luna xhigh`
+- `Sol High`: bounded escalation checkpoints only
+
+See `coordination/PROJECT_PROFILE.md` for the current authoritative orchestration profile.
