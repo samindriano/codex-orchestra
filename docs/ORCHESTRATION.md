@@ -1,52 +1,68 @@
 # IDX Trade orchestration
 
-This repository uses the same control-plane pattern as the US Stock
-orchestrator, with the content adapted to Indonesian Stock Exchange research.
-The parent chat is MAIN: it decomposes work, protects scope, compares evidence,
-integrates only verified results, and decides when to stop.
+The parent/root thread is `MAIN`, the sole control plane and integrator. The
+current project profile is `coordination/PROJECT_PROFILE.md`.
 
-## Operating loop
+## Current operating loop
 
-1. Orient from `coordination/TEAM_STATUS.md`, the task registry, current Git
-   root/branch/HEAD, and the existing IDX data contracts.
-2. Freeze the decision-changing research terms: target, horizon, benchmark,
-   prediction unit, point-in-time universe, sessions, purge/embargo, metrics,
-   acceptance gates, and holdout policy.
-3. Delegate only bounded, non-overlapping work. Every worker gets one question,
-   one repository/worktree, explicit prohibitions, a deliverable, and a
-   verification requirement.
-4. Collect a written handoff in `coordination/handoffs/`.
-5. Review evidence at the milestone. Record `GO`, `NO-GO`, or `BLOCKED` in the
-   shared decision log with the exact reason.
-6. Integrate only approved changes, run proportional validation, update shared
-   status, and stop when the acceptance criteria are met.
+1. Verify `samindriano/idx-trade` root/branch/HEAD and current data contracts.
+2. Read `PROJECT_PROFILE`, `TEAM_STATUS`, task registry, DATA GATE runbook, and relevant code/tests.
+3. Choose DIRECT/LIGHT/HEAVY based on coordination need, not worker availability.
+4. Delegate bounded non-overlapping work with explicit ownership and stopping conditions.
+5. Collect written handoffs and verify actual diffs/tests/evidence.
+6. Record material GO/NO-GO/BLOCKED decisions in `DECISIONS.md`.
+7. Integrate only approved changes and update shared status.
+8. Stop when the current gate is answered; do not drift into modelling.
 
 ## Execution levels
 
-| Level | Use when | Coordination pattern |
+| Level | Use when | Pattern |
 |---|---|---|
-| `DIRECT` | tightly bounded task | MAIN works sequentially with targeted validation |
-| `LIGHT` | one or two independent audits | one or two bounded workers; MAIN synthesizes and verifies |
-| `HEAVY` | high-risk or genuinely parallel research | three to six isolated workers, with milestone review before integration |
+| DIRECT | one bounded fix/audit | MAIN works sequentially + targeted validation |
+| LIGHT | default current mode | 1-2 Luna xhigh workers, usually implementation + tests/audit |
+| HEAVY | genuinely parallel high-risk backfill/reconciliation | 3-6 Luna xhigh workers with isolated ownership + milestone review |
 
-Do not use the level as a quota. The user selects the root model; the
-orchestrator controls only delegation intensity. Workers do not spawn workers,
-and concurrent writers never share a worktree or file ownership.
+HEAVY does not imply Sol. Model strength and orchestration intensity are separate.
 
-## IDX-specific readiness gate
+## Model routing
 
-The next phase remains blocked until the evidence covers, at minimum:
+- User override is authoritative.
+- Default root: `Luna xhigh`.
+- Default workers: `Luna xhigh`.
+- `Sol High` is used only for bounded escalation checkpoints: unresolved architecture conflict, repeated integration failure, pre-model DATA GATE certification, suspicious research result, or final pre-deployment review.
+- Return to Luna after the checkpoint unless the user changes policy.
 
-- point-in-time listing and delisting identity;
-- Regular-Market tradability intervals, including suspension/resumption where
-  known and explicit `UNKNOWN` where reconstruction is incomplete;
-- provider availability separated from exchange state;
-- expected-vs-observed IDX session coverage and internal gap checks;
-- IPO warm-up and historical delisted-security handling;
-- raw OHLC execution semantics and corporate-action provenance;
-- frozen target, horizon, benchmark, universe, temporal split, purge/embargo,
-  metrics, acceptance gate, and locked holdout;
-- reproducible source, configuration, environment, and artifact manifests.
+An external ChatGPT thread may act as research/methodology/audit lead. Codex
+must receive explicit written specifications or commits and independently
+verify repository state; do not assume unstated cross-chat memory.
 
-Missing evidence is not a passing default. `UNKNOWN` is not a negative label,
-and a schema smoke or design document is not research readiness.
+## Current DATA GATE
+
+Model/SR/probability/Kelly work remains blocked until the chosen research
+period passes all of the following:
+
+1. point-in-time listing/delisting identity;
+2. Regular-Market suspension/resumption intervals;
+3. source-discovery completeness and official snapshot reconciliation;
+4. raw Yahoo EOD backfill without silent history revisions;
+5. corporate-action provenance and raw execution-price semantics;
+6. adversarial QA catalog gate;
+7. full point-in-time universe coverage;
+8. frozen reproducibility/data snapshot.
+
+Important invariants:
+
+- `UNKNOWN` does not become `ACTIVE` by default.
+- Missing Yahoo rows do not imply suspend/no-trade/provider failure.
+- Current survivors never define historical universes.
+- Raw execution OHLC remains separate from adjusted/vendor data.
+- A shorter clean period beats a longer guessed period.
+- Parser success does not prove source-discovery completeness.
+
+## Promotion
+
+After full DATA GATE evidence is available, MAIN should request an independent
+pre-model review (Sol High is justified here), record PASS/FAIL/UNKNOWN, and
+only then ask the user to promote the project to setup/SR research.
+
+A failed or unknown gate is not repaired by weakening the standard.
