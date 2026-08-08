@@ -1,22 +1,20 @@
-# IDX Trade V0 status
+# Team status
 
-Only MAIN may edit this file.
+Only MAIN edits this file.
 
-- **Phase:** `BOOTSTRAP_COORDINATION`
-- **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
+- **Project:** `<project-id>`
+- **Phase:** `BOOTSTRAP`
+- **Operating mode:** `<from PROJECT_PROFILE>`
 - **Integration branch:** `main`
-- **Current working branch:** `codex/idx-trade-orchestrator`
-- **Market / venue:** `IDX listed equities / REGULAR / daily-EOD`
-- **Data foundation:** `PRESENT_IN_REPOSITORY; RESEARCH_GATE_NOT_PASSED`
-- **Research source approval:** `NOT_APPROVED_FOR_PIT_EVALUATION`
-- **Training / prediction / monitoring / trading:** `DISABLED`
-- **Active tasks:** `IDX-EXP-001`, `IDX-VAL-001`, `IDX-DATA-001`, `IDX-PROD-001`
-- **Web task:** `NOT_STARTED; NO_ACTIVE_WEB_SCOPE`
-- **Blocked:** no model or trading phase until the target, horizon, benchmark,
-  point-in-time universe, source lineage, session protocol, and data-readiness
-  gate are frozen and approved.
-- **Completed handoffs:** none
-- **Next integration action:** MAIN reviews the initial handoffs, reconciles
-  the existing data-foundation contracts with the frozen research
-  specification, and records a GO/NO-GO decision before any new data or model
-  work.
+- **Source repository / commit:** `<repo @ sha>`
+- **Orchestration level:** `DIRECT`
+- **Root model / reasoning:** `<from PROJECT_PROFILE or user override>`
+- **Active workers:** `none`
+- **Active tasks:** `none`
+- **Passed gates:** `none`
+- **Blocked gates:** `<if any>`
+- **Current blockers:** `PROJECT_PROFILE_NOT_FILLED`
+- **Completed handoffs:** `none`
+- **Next integration action:** fill `PROJECT_PROFILE.md`, verify source state, then register the smallest safe first task.
+
+Update this file only after verifying repository state and material handoffs.
