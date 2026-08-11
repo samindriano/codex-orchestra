@@ -1,11 +1,16 @@
 # DATA status
 
-Owner: DATA / IDX Data Contracts
+Owner: DATA / Data Contracts
 
-Status: `PLANNED`
+Status: `UNASSIGNED`
 
-Owned task: `IDX-DATA-001`.
+Owned task: `none`.
 
-Scope: reconcile the existing provider adapters and data foundation with the
-approved IDX research contract. No new provider, credential, or external data
-source is approved by this status file.
+Typical scope:
+
+- ingestion/providers and schemas;
+- identity, provenance, timing, coverage, and source contracts;
+- data-readiness validation and deterministic fixtures;
+- source audits that can run independently from implementation/research work.
+
+No new credential, provider, private dataset, or external source is authorized merely by assigning a DATA worker. Project-specific source rules remain authoritative.
