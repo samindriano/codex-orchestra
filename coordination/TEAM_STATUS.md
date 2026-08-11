@@ -2,16 +2,16 @@
 
 Only MAIN may edit this file.
 
-- **Phase:** `FINAL_ALPHA_FROZEN__PATH_RISK_V2_PRE_OUTCOME`
+- **Phase:** `FINAL_ALPHA_FROZEN__PATH_RISK_V2_PARALLEL_HARDENING_PRE_OUTCOME`
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
 - **Primary repository:** `samindriano/idx-trade`
 - **Authoritative branch:** `research/idx-ranking-v2-spec-v1`
 - **Source HEAD at sync:** `477b4411c8c294e9ca5012a3079248033de5641c`
-- **Authoritative status:** `docs/CURRENT_STATUS.md`
+- **Authoritative status:** `docs/CURRENT_STATUS.md` plus newest source checkpoint/handoff
 - **Orchestra snapshot freshness:** `CURRENT_AT_SOURCE_HEAD_ABOVE`
-- **Last orchestra sync:** `2026-08-11T04:46:00Z`
+- **Last orchestra sync:** `2026-08-11T04:58:00Z`
 - **Market / venue:** `IDX listed equities / REGULAR / daily-EOD`
-- **Orchestration default:** `LIGHT_PARALLEL_FIRST`
+- **Orchestration active topology:** `HEAVY_PARALLEL_FIRST`
 - **Root / workers:** `Luna xhigh / Luna xhigh`
 - **Escalation:** `Sol High bounded checkpoint only`
 - **Final alpha ranker:** `V3-B-STRUCTURE-LITE-V1-CANDIDATE-005`
@@ -25,11 +25,15 @@ Only MAIN may edit this file.
 - **Path Risk F5/F6:** `SEALED`
 - **Fresh-forward post-2026-07-31 outcomes:** `LOCKED_NOT_ACCESSED`
 - **Calibration / alpha+risk integration / PnL / Kelly / paper/live:** `NOT_AUTHORIZED_AUTOMATICALLY`
-- **Execution frontier:** `checkout/import verification + full test suite; then one serialized PR-002/PR-003 F1-F4 discovery run`
-- **Parallel-safe support work:** `read-only test failure diagnosis, import/environment audit, provenance/spec verification when non-overlapping`
-- **Scientifically sequential boundary:** `do not launch later/rescue candidates or touch F5/F6 before current frozen discovery result`
-- **MAIN-retained work:** `gate protection, authoritative run decision, result interpretation, integration, status update`
-- **Current blocker:** `full local preflight/test result not yet returned for the frozen Path Risk V2 run`
-- **Next milestone:** `complete exactly one authorized PR-002/PR-003 F1-F4 discovery execution and record the frozen verdict without accessing F5/F6`
+- **Execution frontier:** `five-way synthetic/static Path Risk V2 hardening in parallel, then MAIN integration; only after PASS return to local real-run preflight`
+- **Parallel workers ready:** `W1 PR-002 / W2 PR-003 / W3 alpha comparator / W4 runner+provenance / W5 gate+selection`
+- **Scientifically sequential boundary:** `real PR-002/PR-003 F1-F4 discovery remains blocked until hardening+preflight PASS; F5/F6 remain sealed`
+- **MAIN-retained work:** `worker integration, shared production fixes, full-suite verification, gate protection, real-run authorization, result interpretation`
+- **Current blocker for real run:** `parallel hardening not yet completed`
+- **Next milestone:** `PATH_RISK_V2_PARALLEL_HARDENING_PASS_READY_FOR_LOCAL_DISCOVERY`
 
-A substantial future engineering task should not default to one Luna working alone. MAIN must first identify the ready independent workstreams and use LIGHT/HEAVY when that reduces wall-clock time safely.
+Root task:
+
+`coordination/handoffs/IDX-PRV2-PARALLEL-HARDENING-ORCHESTRA.md`
+
+The upgraded orchestra should launch all five ready workers before MAIN starts duplicating their audit work. Workers have disjoint write ownership and do not touch real outcome-bearing data.
