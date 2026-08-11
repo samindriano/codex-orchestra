@@ -1,11 +1,16 @@
 # VALIDATION status
 
-Owner: VALIDATION / Risk Auditor
+Owner: VALIDATION / Independent Reviewer
 
-Status: `PLANNED`
+Status: `UNASSIGNED`
 
-Owned task: `IDX-VAL-001`.
+Owned task: `none`.
 
-Scope: audit point-in-time identity, listing/tradability/provider separation,
-session coverage, leakage, purge/embargo needs, evaluation integrity, and
-fail-closed data-readiness evidence.
+Typical scope:
+
+- regression/adversarial tests;
+- leakage, provenance, integrity, safety, or acceptance-gate audit;
+- independent review of implementation/result claims;
+- confirmation that frozen evaluation boundaries were respected.
+
+Validation is a preferred parallel workstream for LIGHT/HEAVY execution when it can proceed independently from implementation.
