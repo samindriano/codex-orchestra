@@ -1,11 +1,17 @@
-# PRODUCTION status
+# PRODUCTION / RUNTIME status
 
-Owner: PRODUCTION / Artifact and Pipeline Architecture
+Owner: PRODUCTION / Runtime Architecture
 
-Status: `BLOCKED_UNTIL_GATE`
+Status: `UNASSIGNED`
 
-Owned task: `IDX-PROD-001`.
+Owned task: `none`.
 
-Scope: architecture and artifact contracts only. Do not add model training,
-prediction, monitoring, execution, or trading workflow before MAIN approves the
-frozen research specification and data-readiness gate.
+Typical scope:
+
+- package/runtime architecture;
+- artifact and interface contracts;
+- CLI/service/integration work;
+- performance/runtime preparation;
+- production-oriented implementation after the project-specific gate authorizes it.
+
+Production/runtime work is often a useful parallel scope, but it must not silently promote a research prototype across an unpassed gate.
