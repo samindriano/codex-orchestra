@@ -1,9 +1,16 @@
 # WEB status
 
-Owner: WEB / Future Research Surface
+Owner: WEB / Frontend and API Surface
 
-Status: `NOT_STARTED`
+Status: `UNASSIGNED`
 
-No web application is in the current IDX orchestration scope. A web task may
-be created only after a separate source audit, explicit user authorization,
-and a demo-fixture policy that prevents fabricated market outputs.
+Owned task: `none`.
+
+Typical scope:
+
+- frontend UI and state;
+- API/client contracts;
+- monitoring/observability surfaces;
+- integration tests for user-facing behavior.
+
+WEB can be a useful independent LIGHT/HEAVY workstream when backend/API contracts are sufficiently frozen. Do not invent data or bypass project-specific privacy, outcome-access, or release gates for UI convenience.
