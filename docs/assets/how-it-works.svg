@@ -1,40 +1,100 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
-<rect width="1200" height="760" fill="#ffffff"/>
-<defs>
-  <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#334155"/></marker>
-  <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a"/></marker>
-  <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626"/></marker>
-  <style>
-    .txt { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; fill:#0f172a; }
-    .small { font-size:14px; }
-    .label { font-size:16px; font-weight:600; }
-    .title { font-size:18px; font-weight:700; }
-    .edge { stroke:#334155; stroke-width:2; fill:none; marker-end:url(#arrow); }
-    .edge-green { stroke:#16a34a; stroke-width:2; fill:none; marker-end:url(#arrowGreen); }
-    .edge-red { stroke:#dc2626; stroke-width:2; fill:none; marker-end:url(#arrowRed); }
-  </style>
-</defs>
-<rect x="480" y="32" width="240" height="44" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/><text x="600" y="59" text-anchor="middle" class="txt label">User / research lead</text><line x1="600" y1="76" x2="600" y2="104" class="edge"/>
-<rect x="460" y="106" width="280" height="48" rx="10" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/><text x="600" y="136" text-anchor="middle" class="txt title">MAIN orchestrator</text><line x1="600" y1="154" x2="600" y2="182" class="edge"/>
-<polygon points="600,184 720,226 600,268 480,226" fill="#fff7ed" stroke="#d97706" stroke-width="2"/><text x="600" y="232" text-anchor="middle" class="txt label">Task complexity</text>
-<path d="M500 238 H230 V300" class="edge"/><path d="M600 268 V300" class="edge"/><path d="M700 238 H980 V300" class="edge"/>
-<text x="300" y="258" class="txt small">small + bounded</text><text x="615" y="292" class="txt small">2–3 paths</text><text x="800" y="258" class="txt small">large / parallel / high-risk</text>
-<rect x="90" y="310" width="280" height="245" rx="14" fill="#f0fdf4" stroke="#86efac" stroke-width="2"/><text x="230" y="340" text-anchor="middle" class="txt title" fill="#166534">DIRECT</text>
-<rect x="130" y="365" width="200" height="50" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/><text x="230" y="396" text-anchor="middle" class="txt label">Small + bounded</text><line x1="230" y1="415" x2="230" y2="458" class="edge"/>
-<rect x="130" y="460" width="200" height="58" rx="10" fill="#ffffff" stroke="#16a34a" stroke-width="2"/><text x="230" y="485" text-anchor="middle" class="txt label">MAIN implements</text><text x="230" y="506" text-anchor="middle" class="txt label">+ verifies</text>
-<rect x="410" y="310" width="360" height="245" rx="14" fill="#eff6ff" stroke="#93c5fd" stroke-width="2"/><text x="590" y="340" text-anchor="middle" class="txt title" fill="#1d4ed8">LIGHT</text>
-<rect x="470" y="365" width="240" height="50" rx="10" fill="#dbeafe" stroke="#2563eb" stroke-width="2"/><text x="590" y="396" text-anchor="middle" class="txt label">2–3 independent paths</text><path d="M590 415 V435 H500 V458" class="edge"/><path d="M590 435 H680 V458" class="edge"/>
-<rect x="450" y="460" width="100" height="48" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/><rect x="630" y="460" width="100" height="48" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/><text x="500" y="490" text-anchor="middle" class="txt label">Worker A</text><text x="680" y="490" text-anchor="middle" class="txt label">Worker B</text><path d="M500 508 V525 H590" class="edge"/><path d="M680 508 V525 H590" class="edge"/>
-<rect x="500" y="515" width="180" height="42" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/><text x="590" y="542" text-anchor="middle" class="txt label">MAIN integrates</text>
-<rect x="810" y="310" width="350" height="245" rx="14" fill="#fef2f2" stroke="#fca5a5" stroke-width="2"/><text x="985" y="340" text-anchor="middle" class="txt title" fill="#b91c1c">HEAVY</text>
-<rect x="855" y="365" width="260" height="50" rx="10" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/><text x="985" y="396" text-anchor="middle" class="txt label">Large / parallel / high-risk</text><path d="M985 415 V438 H850 V458" class="edge"/><path d="M985 438 H940 V458" class="edge"/><path d="M985 438 H1030 V458" class="edge"/><path d="M985 438 H1098 V450" class="edge"/>
-<rect x="815" y="460" width="70" height="48" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/><rect x="905" y="460" width="70" height="48" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/><rect x="995" y="460" width="70" height="48" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/><rect x="1054" y="452" width="88" height="64" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/>
-<text x="850" y="490" text-anchor="middle" class="txt small">Worker A</text><text x="940" y="490" text-anchor="middle" class="txt small">Worker B</text><text x="1030" y="490" text-anchor="middle" class="txt small">Worker C</text><text x="1098" y="478" text-anchor="middle" class="txt" style="font-size:12px">Independent</text><text x="1098" y="497" text-anchor="middle" class="txt" style="font-size:12px">review</text>
-<path d="M850 508 V525 H985" class="edge"/><path d="M940 508 V525 H985" class="edge"/><path d="M1030 508 V525 H985" class="edge"/><path d="M1098 516 V525 H985" class="edge"/>
-<rect x="895" y="515" width="180" height="42" rx="9" fill="#ffffff" stroke="#dc2626" stroke-width="2"/><text x="985" y="542" text-anchor="middle" class="txt label">MAIN integrates</text>
-<path d="M230 518 V600 H500" class="edge"/><path d="M590 557 V600" class="edge"/><path d="M985 557 V600 H680" class="edge"/>
-<rect x="500" y="580" width="180" height="44" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2"/><text x="590" y="608" text-anchor="middle" class="txt label">Validation / gate</text>
-<line x1="590" y1="624" x2="590" y2="665" class="edge-green"/><text x="605" y="652" class="txt small" fill="#15803d">PASS</text>
-<rect x="495" y="670" width="190" height="44" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/><text x="590" y="698" text-anchor="middle" class="txt label">Done / next task</text>
-<path d="M680 620 H1180 V130 H742" class="edge-red"/><text x="1070" y="648" class="txt small" fill="#dc2626">FAIL → revise</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#334155"/></marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a"/></marker>
+    <marker id="arrowRed" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#dc2626"/></marker>
+    <style>
+      .txt { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; fill:#0f172a; }
+      .small { font-size:13px; }
+      .label { font-size:15px; font-weight:600; }
+      .title { font-size:18px; font-weight:700; }
+      .big { font-size:20px; font-weight:750; }
+      .edge { stroke:#334155; stroke-width:2; fill:none; marker-end:url(#arrow); }
+      .edge-green { stroke:#16a34a; stroke-width:2; fill:none; marker-end:url(#arrowGreen); }
+      .edge-red { stroke:#dc2626; stroke-width:2; fill:none; marker-end:url(#arrowRed); }
+      .dash { stroke:#94a3b8; stroke-width:1.5; stroke-dasharray:6 5; fill:none; }
+    </style>
+  </defs>
+
+  <text x="600" y="30" text-anchor="middle" class="txt big">Latency-aware orchestration</text>
+  <text x="600" y="52" text-anchor="middle" class="txt small">Parallelize the current execution frontier; keep dependent decisions sequential.</text>
+
+  <rect x="480" y="72" width="240" height="46" rx="11" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="600" y="101" text-anchor="middle" class="txt label">User goal / source of truth</text>
+  <line x1="600" y1="118" x2="600" y2="146" class="edge"/>
+
+  <rect x="390" y="150" width="420" height="74" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="600" y="179" text-anchor="middle" class="txt title">MAIN parallelism preflight</text>
+  <text x="600" y="202" text-anchor="middle" class="txt small">What can start now? What is independent? What must MAIN retain?</text>
+  <line x1="600" y1="224" x2="600" y2="247" class="edge"/>
+
+  <polygon points="600,250 735,296 600,342 465,296" fill="#fff7ed" stroke="#d97706" stroke-width="2"/>
+  <text x="600" y="290" text-anchor="middle" class="txt label">Useful ready workstreams</text>
+  <text x="600" y="311" text-anchor="middle" class="txt small">on the critical path</text>
+
+  <path d="M482 307 H220 V362" class="edge"/>
+  <path d="M600 342 V362" class="edge"/>
+  <path d="M718 307 H980 V362" class="edge"/>
+  <text x="278" y="329" class="txt small">1 / inherently sequential</text>
+  <text x="615" y="355" class="txt small">2–3 ready paths</text>
+  <text x="811" y="329" class="txt small">3–6 ready paths / review</text>
+
+  <rect x="55" y="370" width="310" height="238" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="210" y="402" text-anchor="middle" class="txt title">DIRECT</text>
+  <text x="210" y="424" text-anchor="middle" class="txt small">Exception for substantial work</text>
+  <rect x="100" y="448" width="220" height="58" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="2"/>
+  <text x="210" y="474" text-anchor="middle" class="txt label">MAIN implements</text>
+  <text x="210" y="494" text-anchor="middle" class="txt small">+ targeted verification</text>
+  <rect x="92" y="528" width="236" height="50" rx="10" fill="#f1f5f9" stroke="#94a3b8"/>
+  <text x="210" y="549" text-anchor="middle" class="txt small">If task is substantial, record why</text>
+  <text x="210" y="567" text-anchor="middle" class="txt small">workers would not shorten latency.</text>
+
+  <rect x="395" y="370" width="410" height="238" rx="16" fill="#eff6ff" stroke="#60a5fa" stroke-width="3"/>
+  <text x="600" y="402" text-anchor="middle" class="txt title" fill="#1d4ed8">LIGHT · DEFAULT</text>
+  <text x="600" y="424" text-anchor="middle" class="txt small">Launch independent work before MAIN duplicates it</text>
+  <rect x="425" y="450" width="105" height="54" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <rect x="548" y="450" width="105" height="54" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <rect x="671" y="450" width="105" height="54" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="477" y="480" text-anchor="middle" class="txt small">Worker A</text>
+  <text x="600" y="472" text-anchor="middle" class="txt small">MAIN</text>
+  <text x="600" y="490" text-anchor="middle" class="txt small">coupled path</text>
+  <text x="723" y="480" text-anchor="middle" class="txt small">Worker B</text>
+  <path d="M477 504 V535 H600" class="edge"/>
+  <path d="M600 504 V535" class="edge"/>
+  <path d="M723 504 V535 H600" class="edge"/>
+  <rect x="500" y="536" width="200" height="48" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="600" y="565" text-anchor="middle" class="txt label">MAIN integrates evidence</text>
+
+  <rect x="835" y="370" width="310" height="238" rx="16" fill="#fff7ed" stroke="#fb923c" stroke-width="2"/>
+  <text x="990" y="402" text-anchor="middle" class="txt title" fill="#c2410c">HEAVY</text>
+  <text x="990" y="424" text-anchor="middle" class="txt small">Wide frontier / uncertain root cause</text>
+  <rect x="862" y="450" width="72" height="52" rx="8" fill="#ffffff" stroke="#ea580c"/>
+  <rect x="945" y="450" width="72" height="52" rx="8" fill="#ffffff" stroke="#ea580c"/>
+  <rect x="1028" y="450" width="72" height="52" rx="8" fill="#ffffff" stroke="#ea580c"/>
+  <text x="898" y="480" text-anchor="middle" class="txt small">A</text>
+  <text x="981" y="480" text-anchor="middle" class="txt small">B</text>
+  <text x="1064" y="480" text-anchor="middle" class="txt small">C+</text>
+  <rect x="905" y="520" width="170" height="42" rx="9" fill="#ffffff" stroke="#ea580c"/>
+  <text x="990" y="546" text-anchor="middle" class="txt small">optional independent review</text>
+  <path d="M898 502 V578 H990" class="edge"/>
+  <path d="M981 502 V578" class="edge"/>
+  <path d="M1064 502 V578 H990" class="edge"/>
+  <rect x="910" y="570" width="160" height="28" rx="8" fill="#fff" stroke="#ea580c"/>
+  <text x="990" y="589" text-anchor="middle" class="txt small">MAIN milestone review</text>
+
+  <path d="M210 608 V650 H510" class="edge"/>
+  <path d="M600 608 V650" class="edge"/>
+  <path d="M990 608 V650 H690" class="edge"/>
+  <rect x="510" y="630" width="180" height="44" rx="10" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="600" y="657" text-anchor="middle" class="txt label">Validation / gate</text>
+
+  <line x1="600" y1="674" x2="600" y2="706" class="edge-green"/>
+  <text x="615" y="697" class="txt small" fill="#15803d">PASS</text>
+  <rect x="470" y="710" width="260" height="48" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="600" y="731" text-anchor="middle" class="txt label">Integrate + refresh status</text>
+  <text x="600" y="749" text-anchor="middle" class="txt small">then de-escalate or build next frontier</text>
+
+  <path d="M690 650 H1170 V187 H812" class="edge-red"/>
+  <text x="975" y="637" class="txt small" fill="#dc2626">FAIL / BLOCKED → revise frontier</text>
 </svg>
