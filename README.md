@@ -4,7 +4,7 @@ IDX-specific orchestration snapshot for `samindriano/idx-trade`.
 
 - Source repository: `samindriano/idx-trade`
 - Authoritative source branch: `research/idx-ranking-v2-spec-v1`
-- Source HEAD at this sync: `cbecbe3993e1c2adb0dab660b687e316b14a69c4`
+- Source HEAD at this sync: `477b4411c8c294e9ca5012a3079248033de5641c`
 - Authoritative source status: `docs/CURRENT_STATUS.md`
 - Snapshot branch: `orchestra/idx-trade`
 - Last synchronized: `2026-08-11T04:46:00Z`
