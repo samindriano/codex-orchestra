@@ -6,7 +6,7 @@ Only MAIN may edit this file.
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
 - **Primary repository:** `samindriano/idx-trade`
 - **Authoritative branch:** `research/idx-ranking-v2-spec-v1`
-- **Source HEAD at sync:** `cbecbe3993e1c2adb0dab660b687e316b14a69c4`
+- **Source HEAD at sync:** `477b4411c8c294e9ca5012a3079248033de5641c`
 - **Authoritative status:** `docs/CURRENT_STATUS.md`
 - **Orchestra snapshot freshness:** `CURRENT_AT_SOURCE_HEAD_ABOVE`
 - **Last orchestra sync:** `2026-08-11T04:46:00Z`
