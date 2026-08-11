@@ -1,12 +1,70 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="520" viewBox="0 0 1100 520">
-<rect width="1100" height="520" fill="#ffffff"/>
-<defs>
-  <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#334155"/></marker>
-  <style>
-    .txt { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; fill:#0f172a; }
-    .small { font-size:14px; }
-    .label { font-size:16px; font-weight:600; }
-    .title { font-size:18px; font-weight:700; }
-    .edge { stroke:#334155; stroke-width:2; fill:none; marker-end:url(#arrow); }
-  </style>
-</defs><rect x="60" y="45" width="200" height="52" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/><text x="160" y="77" text-anchor="middle" class="txt label">PROJECT_PROFILE.md</text><rect x="300" y="45" width="200" height="52" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/><text x="400" y="77" text-anchor="middle" class="txt label">TEAM_STATUS.md</text><rect x="540" y="45" width="200" height="52" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/><text x="640" y="77" text-anchor="middle" class="txt label">TASK_REGISTRY.md</text><rect x="780" y="45" width="200" height="52" rx="10" fill="#f8fafc" stroke="#64748b" stroke-width="2"/><text x="880" y="77" text-anchor="middle" class="txt label">DECISIONS.md</text><line x1="160" y1="97" x2="160" y2="135" stroke="#334155" stroke-width="2"/><line x1="400" y1="97" x2="400" y2="135" stroke="#334155" stroke-width="2"/><line x1="640" y1="97" x2="640" y2="135" stroke="#334155" stroke-width="2"/><line x1="880" y1="97" x2="880" y2="135" stroke="#334155" stroke-width="2"/><line x1="160" y1="135" x2="880" y2="135" stroke="#334155" stroke-width="2"/><line x1="550" y1="135" x2="550" y2="180" class="edge"/><text x="570" y="160" class="txt small">project state</text><rect x="425" y="185" width="250" height="72" rx="12" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/><text x="550" y="215" text-anchor="middle" class="txt title">MAIN</text><text x="550" y="239" text-anchor="middle" class="txt small">Single integrator</text><line x1="550" y1="257" x2="550" y2="315" class="edge"/><text x="570" y="292" class="txt small">dispatch</text><rect x="425" y="320" width="250" height="56" rx="10" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/><text x="550" y="354" text-anchor="middle" class="txt label">Bounded workers</text><line x1="550" y1="376" x2="550" y2="420" class="edge"/><text x="570" y="404" class="txt small">return evidence</text><rect x="420" y="425" width="260" height="66" rx="12" fill="#ecfeff" stroke="#0891b2" stroke-width="2"/><text x="550" y="453" text-anchor="middle" class="txt label">handoffs/</text><text x="550" y="476" text-anchor="middle" class="txt small">Evidence + results</text><path d="M420 458 H325 V221 H425" class="edge"/><text x="337" y="345" class="txt small">integrate</text></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="600" viewBox="0 0 1100 600">
+  <rect width="1100" height="600" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#334155"/></marker>
+    <marker id="arrowGreen" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,4 L0,8 Z" fill="#16a34a"/></marker>
+    <style>
+      .txt { font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; fill:#0f172a; }
+      .small { font-size:13px; }
+      .label { font-size:15px; font-weight:600; }
+      .title { font-size:19px; font-weight:700; }
+      .edge { stroke:#334155; stroke-width:2; fill:none; marker-end:url(#arrow); }
+      .edge-green { stroke:#16a34a; stroke-width:2; fill:none; marker-end:url(#arrowGreen); }
+      .dash { stroke:#94a3b8; stroke-width:1.5; stroke-dasharray:6 5; fill:none; }
+    </style>
+  </defs>
+
+  <text x="550" y="32" text-anchor="middle" class="txt title">Control plane: source truth → execution frontier → verified integration</text>
+
+  <rect x="55" y="62" width="300" height="92" rx="13" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="205" y="90" text-anchor="middle" class="txt label">Authoritative source project</text>
+  <text x="205" y="113" text-anchor="middle" class="txt small">branch / HEAD / CURRENT_STATUS</text>
+  <text x="205" y="134" text-anchor="middle" class="txt small">gates + frozen contracts</text>
+
+  <rect x="745" y="62" width="300" height="92" rx="13" fill="#fffbeb" stroke="#d97706" stroke-width="2"/>
+  <text x="895" y="90" text-anchor="middle" class="txt label">Project orchestra snapshot</text>
+  <text x="895" y="113" text-anchor="middle" class="txt small">PROJECT_PROFILE / TEAM_STATUS</text>
+  <text x="895" y="134" text-anchor="middle" class="txt small">CURRENT only when synced to source</text>
+
+  <line x1="355" y1="108" x2="745" y2="108" class="dash"/>
+  <text x="550" y="99" text-anchor="middle" class="txt small">sync on material milestone / source-HEAD change</text>
+  <text x="550" y="122" text-anchor="middle" class="txt small">source wins on conflict</text>
+
+  <path d="M205 154 V192 H470" class="edge"/>
+  <path d="M895 154 V192 H630" class="edge"/>
+  <rect x="410" y="190" width="280" height="74" rx="13" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text x="550" y="219" text-anchor="middle" class="txt title">MAIN</text>
+  <text x="550" y="242" text-anchor="middle" class="txt small">decompose · protect gates · integrate</text>
+
+  <line x1="550" y1="264" x2="550" y2="302" class="edge"/>
+  <rect x="380" y="306" width="340" height="70" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="550" y="333" text-anchor="middle" class="txt label">Execution frontier</text>
+  <text x="550" y="354" text-anchor="middle" class="txt small">independent READY work that can start now</text>
+  <text x="550" y="371" text-anchor="middle" class="txt small">DIRECT · LIGHT · HEAVY selected from frontier width</text>
+
+  <path d="M440 376 V408 H225" class="edge"/>
+  <path d="M550 376 V408" class="edge"/>
+  <path d="M660 376 V408 H875" class="edge"/>
+
+  <rect x="80" y="412" width="290" height="84" rx="12" fill="#ffffff" stroke="#2563eb" stroke-width="2"/>
+  <text x="225" y="439" text-anchor="middle" class="txt label">Worker scopes</text>
+  <text x="225" y="461" text-anchor="middle" class="txt small">isolated ownership / worktrees</text>
+  <text x="225" y="481" text-anchor="middle" class="txt small">implementation · tests · audit · inspection</text>
+
+  <rect x="405" y="412" width="290" height="84" rx="12" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
+  <text x="550" y="439" text-anchor="middle" class="txt label">MAIN-retained work</text>
+  <text x="550" y="461" text-anchor="middle" class="txt small">coupling · architecture · blockers</text>
+  <text x="550" y="481" text-anchor="middle" class="txt small">integration prep · final judgment</text>
+
+  <rect x="730" y="412" width="290" height="84" rx="12" fill="#fafafa" stroke="#a1a1aa" stroke-width="2"/>
+  <text x="875" y="439" text-anchor="middle" class="txt label">Execution runtime</text>
+  <text x="875" y="461" text-anchor="middle" class="txt small">Codex sessions / worktrees / Xirp</text>
+  <text x="875" y="481" text-anchor="middle" class="txt small">tmux or another session manager</text>
+
+  <path d="M225 496 V530 H470" class="edge"/>
+  <path d="M550 496 V530" class="edge"/>
+  <path d="M875 496 V530 H630" class="edge"/>
+  <rect x="430" y="524" width="240" height="52" rx="11" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="550" y="547" text-anchor="middle" class="txt label">Verified integration</text>
+  <text x="550" y="566" text-anchor="middle" class="txt small">diff + tests + evidence + status refresh</text>
+</svg>
