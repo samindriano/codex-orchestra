@@ -8,7 +8,7 @@ Only MAIN edits this file.
 - **Project:** IDX daily/EOD trade-setup research
 - **Primary repository:** `samindriano/idx-trade`
 - **Authoritative source branch:** `research/idx-ranking-v2-spec-v1`
-- **Source HEAD at sync:** `cbecbe3993e1c2adb0dab660b687e316b14a69c4`
+- **Source HEAD at sync:** `477b4411c8c294e9ca5012a3079248033de5641c`
 - **Authoritative status document:** `docs/CURRENT_STATUS.md`
 - **Orchestra snapshot branch:** `orchestra/idx-trade`
 - **Last orchestra sync:** `2026-08-11T04:46:00Z`
