@@ -1,164 +1,156 @@
 # IDX Trade working agreement
 
-## Repository-wide principles
+## Authority and current state
 
-This project is **EXPLORATORY_RESEARCH_ONLY**. It is not investment advice and
-must not silently become a live trading system.
+This repository branch is an orchestration snapshot for `samindriano/idx-trade`. The source repository and its `docs/CURRENT_STATUS.md` are authoritative. If this file conflicts with the source project, treat this snapshot as `STALE` until MAIN refreshes it.
 
-The current authorized phase is the IDX **DATA GATE**: point-in-time identity,
-Regular-Market tradability reconstruction, raw EOD backfill, corporate-action
-verification, provider-gap classification, adversarial QA, full-universe
-coverage, and reproducibility/provenance work required to certify a research
-period.
+Synchronized source state at `cbecbe3993e1c2adb0dab660b687e316b14a69c4`:
 
-Model/SR/probability/Kelly work remains blocked until the DATA GATE passes and
-MAIN/user explicitly promotes the phase.
+- operating mode: `EXPLORATORY_RESEARCH_ONLY`;
+- alpha architecture search: closed;
+- final alpha ranker: `V3-B-STRUCTURE-LITE-V1-CANDIDATE-005`;
+- final model SHA-256: `1a702031113ff75f38158aa35d1c2bac477cd424d7f14b83d7a89e6c74fef0f6`;
+- exact 33-feature order SHA-256: `100ff7a9bacf394b2adc1daa7eb73b0fe7b89613a6918a9e4ded60ca67a55e9e`;
+- Path Risk V1: failed/closed;
+- Path Risk V2 PR-002/PR-003: frozen + implemented, discovery outcomes unviewed;
+- Path Risk F5/F6: sealed;
+- fresh-forward realized outcomes after 2026-07-31: locked/unaccessed;
+- calibration, alpha+risk integration, execution-PnL, Kelly, paper/live: not automatically authorized.
 
-Non-negotiable rules:
+## Primary objective of the orchestra
 
-- Do not fabricate market data, exchange state, performance, scores, or model state.
-- Do not infer `SUSPENDED`, `NO_TRADE`, or `DATA_MISSING` from an absent Yahoo/provider row.
-- Outside an audited tradability coverage window, missing suspension evidence resolves to `UNKNOWN`, not `ACTIVE`.
-- Keep listing existence, market-specific tradability, and provider availability separate.
-- Keep raw OHLC execution prices separate from adjusted/vendor information.
-- Historical delisted securities remain eligible historically before their effective delisting date.
-- Current survivors must never be backfilled into historical universes.
-- Preserve unrelated user changes and existing IDX data contracts/tests.
-- Never commit credentials, runtime market data, model artifacts, caches, or user-specific local paths.
-- Each worker edits only its owned scope. Cross-ownership changes require a written handoff and MAIN integration.
+Use **Luna xhigh concurrency to reduce wall-clock time** without weakening ownership, validation, leakage/PIT controls, frozen experiments, sealed evidence, or phase gates.
 
-## Sources and lineage
+The orchestra is not useful if MAIN simply performs every meaningful scope sequentially. It is also not useful if workers are spawned without independent work.
 
-Primary implementation source of truth:
+## Mandatory parallelism preflight
 
-- `samindriano/idx-trade`
-- audited orchestration source commit: `1ebfe62545993a3cd578127594216479f1730468`
+Before meaningful implementation/research work, MAIN must explicitly identify:
 
-`market-movement-analyzer-eventrank-v0` is read-only legacy reference material.
-Do not migrate legacy weights, runtime datasets, predictions, ledgers, old
-BULLISH/BEARISH/NEUTRAL semantics, overloaded confidence fields, or old
-portfolio backtest logic without an explicit audit.
+1. workstreams that can start now without another unfinished result;
+2. which of those workstreams are independent and non-overlapping;
+3. which cross-cutting/coupled work MAIN should retain;
+4. which ready scopes should be spawned immediately.
 
-US-stock and Biohub repositories may be consulted for orchestration patterns
-only. Do not copy their domain assumptions into IDX research.
+The ready independent set is the **execution frontier**.
 
-## IDX Trade identity
+Rules:
 
-- Project ID: `idx-trade-v0`
-- Market: Indonesia Stock Exchange listed equities
-- Initial execution venue: `REGULAR`
-- Timeframe: daily/EOD
-- Universe: point-in-time and dynamic
-- Output direction: setup/opportunity score plus separate calibrated outcome probability and risk metrics; exact modelling semantics remain unfrozen
-- Operating mode: `EXPLORATORY_RESEARCH_ONLY`
-
-Current data-gate order:
-
-1. listing/delisting identity;
-2. suspension/resumption reconstruction;
-3. source-discovery completeness + official snapshot reconciliation;
-4. raw Yahoo EOD backfill;
-5. corporate-action/raw-price semantic verification;
-6. adversarial QA gate;
-7. full point-in-time universe gate;
-8. freeze data/provenance snapshot;
-9. request promotion to setup/SR research.
-
-A shorter clean historical period is preferred to a longer period with guessed states.
-
-## Control plane and ownership
-
-MAIN is the sole decomposer, integrator, and phase-transition authority. Only
-MAIN edits shared coordination files.
-
-| Role | Owned scope |
-|---|---|
-| RESEARCH / EXPERIMENT | bounded methodology proposals, source-reuse audit, future target/baseline proposals |
-| VALIDATION | tests, point-in-time/leakage audit, snapshot reconciliation, data-gate integrity, adversarial checks |
-| DATA | `src/idx_trade/providers/`, security/tradability state, universe/coverage/backfill/data-gate logic, related config data contracts |
-| PRODUCTION | storage/provenance/package architecture and later simulator/runtime contracts |
-| WEB | no active scope unless separately authorized |
-
-Workers never spawn workers. Read-only workers may inspect the canonical
-checkout; concurrent writers require isolated worktrees or provably disjoint
-ownership. Workers never merge or push their own integration.
+- MAIN must not hoard independent critical-path work merely because it can finish it alone.
+- Spawn workers before MAIN starts doing the same delegated work.
+- Do not create artificial parallelism by fragmenting tightly coupled edits.
+- Do not duplicate work unless the explicit purpose is independent comparison/adversarial review.
+- A substantial task that remains DIRECT must state why parallelism would not materially reduce wall-clock time.
 
 ## Orchestration levels
 
-Use the lightest reliable level:
+### DIRECT
 
-- `DIRECT`: one tightly bounded parser/test/doc/fix or narrow audit.
-- `LIGHT`: default for the current phase; usually one or two independent Luna workers such as implementation + tests/audit.
-- `HEAVY`: three to six workers only when actual backfill/reconciliation has genuinely parallel, non-overlapping critical-path workstreams.
+Use for small/inherently sequential work with at most one useful immediate path: one localized fix, one command whose result gates everything, one tiny documentation change, or another scope where worker startup would not repay itself.
 
-Do not keep HEAVY alive for maintenance or because workers are available.
+### LIGHT — default for meaningful work
+
+Use when roughly 2–3 useful independent scopes are ready now.
+
+Typical IDX shape:
+
+- MAIN: architecture/integration/gate protection or one coupled path;
+- Worker A: implementation;
+- Worker B: independent tests/leakage/PIT audit;
+- optional Worker C: runtime/data/API/frontend inspection;
+- launch concurrently where dependencies permit;
+- MAIN verifies and integrates evidence.
+
+### HEAVY
+
+Use when roughly 3–6 independent critical-path scopes exist, a migration has separable data/model/runtime/web dimensions, debugging has several plausible independent root causes, or an independent high-value review is decision-changing.
+
+HEAVY does not imply Sol. It means a wider useful frontier.
+
+De-escalate as soon as the frontier becomes sequential.
+
+## Research parallelism rule
+
+Preserve scientific dependency order:
+
+`hypothesis -> frozen experiment -> evidence -> compare/prune -> next hypothesis`
+
+Do not launch a later candidate early if its specification should depend on the current result.
+
+Inside the current frozen experiment, parallelize orthogonal work aggressively when safe:
+
+- implementation;
+- regression tests;
+- leakage/PIT/provenance audit;
+- runtime/cache preparation;
+- source/data-contract inspection;
+- independent result validation.
+
+Never change a frozen target, fold, holdout, candidate definition, metric, threshold, or source after viewing results merely to rescue a failure.
+
+## Current Path Risk V2 boundary
+
+Immediate source-authorized flow:
+
+1. verify checkout/import resolution and full repository tests;
+2. if preflight passes, execute exactly one frozen PR-002/PR-003 F1-F4 discovery run;
+3. review the result against frozen gates;
+4. do not touch F5/F6 without a separate one-shot confirmation specification.
+
+The final evidence-producing discovery execution is intentionally serialized. Supporting read-only audit/test diagnosis may run in parallel if it cannot contaminate the run.
+
+Do not:
+
+- reopen final V3-B/V4 alpha architecture automatically;
+- rescue Path Risk V1 PR-001;
+- add PR-004 after seeing PR-002/PR-003;
+- access F5/F6 during V2 discovery;
+- access post-2026-07-31 fresh-forward realized outcomes early;
+- create risk-veto/reranking/sizing/execution rules automatically.
 
 ## Model routing
 
 The user may override this at any time.
 
-- persistent Codex root default: **Luna xhigh**;
-- normal worker default: **Luna xhigh**;
-- **Sol High** is a bounded escalation model, not the persistent root by default.
+- persistent MAIN/root default: **Luna xhigh**;
+- normal workers: **Luna xhigh**;
+- escalation: **Sol High**, bounded to a decision-changing checkpoint.
 
-Escalate to Sol High only for a specific decision-changing checkpoint, such as:
+Appropriate Sol checkpoints include unresolved architecture conflict after bounded Luna attempts, repeated integration failure, methodology certification, suspiciously strong research evidence, or a final high-risk promotion/release decision.
 
-- unresolved architecture conflict after bounded Luna attempts;
-- repeated integration/debugging failure;
-- pre-model DATA GATE certification;
-- suspiciously strong research result requiring adversarial review;
-- final pre-deployment/live-money review.
+Use safe Luna concurrency for latency reduction before relying on a persistent premium root.
 
-After the checkpoint, return to Luna unless the user explicitly changes policy.
-Workers never self-upgrade models.
+## Ownership
 
-An external ChatGPT research/audit thread may provide methodology research,
-GitHub audits, and written specifications. Only explicit specs, artifacts,
-commits, or user instructions transfer between chats; Codex must independently
-verify repository state before edits.
+| Role | Typical owned scope |
+|---|---|
+| RESEARCH / EXPERIMENT | bounded hypotheses/specifications, experiment implementation/interpretation; no silent gate changes |
+| VALIDATION | tests, leakage/PIT audit, sealed-fold controls, result verification |
+| DATA | source/provenance, point-in-time universe, coverage/data contracts |
+| PRODUCTION | package/runtime architecture, scoring/artifact/runtime integration |
+| WEB | monitoring/API/frontend work when explicitly scoped; no locked-outcome exposure |
 
-## Task and research discipline
+MAIN alone integrates and edits shared coordination state.
 
-Every worker prompt states the exact repository/worktree, base commit, one
-question, owned scope, prohibited changes, deliverable, required validation,
-handoff path, and stop condition.
+Workers never spawn workers, merge, rebase, force-push, or rewrite history. Concurrent writers require isolated worktrees or provably disjoint ownership.
 
-For research work preserve:
+## Task contract
 
-`hypothesis -> bounded audit/experiment -> compare -> prune -> validate -> integrate`
+Every worker receives:
 
-Do not introduce post-holdout tuning, new sources, relaxed data gates, or a new
-target simply to rescue a failed result. `UNKNOWN` remains blocking when it can
-change research validity.
+- exact repo/worktree and base commit;
+- task ID and parallel group;
+- one bounded question and why it can run now;
+- owned scope and prohibited changes;
+- satisfied dependencies/assumptions;
+- deliverable and validation evidence;
+- integration contract;
+- stopping condition and handoff path.
 
-Every task concludes with `coordination/handoffs/<task-id>-<role>.md`:
+Every delegated task returns a concise decision-complete handoff.
 
-```text
-# Handoff
-from:
-to:
-task_id:
-model_used:
-reasoning_level:
-source_repository:
-source_commit:
-branch:
-head_commit:
-scope:
-files_changed:
-findings:
-decisions_made:
-decisions_needed:
-blocking_risks:
-validation_run:
-recommended_next_action:
-```
+## Snapshot synchronization
 
-A handoff is evidence, not permission for the next phase.
+This `orchestra/idx-trade` branch is not automatically updated by source-project work. On a material source phase transition, final-model/gate change, or meaningful source-HEAD milestone, MAIN refreshes `PROJECT_PROFILE`, `TEAM_STATUS`, `TASK_REGISTRY`, and material `DECISIONS` entries.
 
-## Git safety
-
-- Verify exact repo root, branch, HEAD, and worktree state before edits.
-- Preserve unrelated user changes; no hard reset, clean, force push, rebase, or history rewrite unless explicitly authorized.
-- MAIN integrates only after checking scope, diff, tests/validation, and provenance.
-- Runtime market data, credentials, generated models, and local caches stay out of Git.
+If synchronization is missed, stale orchestration state must never override the source repository.
