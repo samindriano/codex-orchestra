@@ -2,23 +2,34 @@
 
 Only MAIN may edit this file.
 
-- **Phase:** `DATA_GATE_LOCAL_EXECUTION`
+- **Phase:** `FINAL_ALPHA_FROZEN__PATH_RISK_V2_PRE_OUTCOME`
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
 - **Primary repository:** `samindriano/idx-trade`
-- **Current source commit:** `3a7d7d4a47d9f69c9e285bf5c0b4292e392beed7`
-- **Integration branch:** `main`
+- **Authoritative branch:** `research/idx-ranking-v2-spec-v1`
+- **Source HEAD at sync:** `cbecbe3993e1c2adb0dab660b687e316b14a69c4`
+- **Authoritative status:** `docs/CURRENT_STATUS.md`
+- **Orchestra snapshot freshness:** `CURRENT_AT_SOURCE_HEAD_ABOVE`
+- **Last orchestra sync:** `2026-08-11T04:46:00Z`
 - **Market / venue:** `IDX listed equities / REGULAR / daily-EOD`
-- **Orchestration default:** `LIGHT`
+- **Orchestration default:** `LIGHT_PARALLEL_FIRST`
 - **Root / workers:** `Luna xhigh / Luna xhigh`
-- **Escalation:** `Sol High checkpoint only`
-- **Data foundation:** `IMPLEMENTED; LOCAL EXECUTION/VALIDATION REQUIRED; ACTUAL HISTORICAL DATA GATE NOT YET PASSED`
-- **Official session calendar:** `ADAPTER + ARTIFACT RUNNER IMPLEMENTED; LIVE IDX EXTRACTION NOT YET CERTIFIED`
-- **Tradability coverage registry:** `EMPTY_BY_DEFAULT; NO COMPLETE WINDOW CLAIMED`
-- **Public announcement constraint:** `IDX PUBLIC PAGE = 3 YEARS; OLDER HISTORY REQUIRES TICMI/OTHER APPROPRIATE OFFICIAL EVIDENCE`
-- **Model / SR / probability / Kelly:** `BLOCKED_UNTIL_DATA_GATE`
-- **Paper/live trading:** `DISABLED`
-- **Active task:** `IDX-DATA-002`
-- **Next task:** `IDX-VAL-002` after data artifacts exist
-- **Blocked task:** `IDX-MODEL-001`
-- **Current blockers:** pytest/live adapter validation, actual official Exchange-Day extraction, EOD backfill, suspension-source completeness audit, corporate-action verification, adversarial gate, full-universe gate.
-- **Next milestone:** generate local auditable artifacts for a recent candidate research period and return exact PASS/FAIL/UNKNOWN evidence without weakening the gate.
+- **Escalation:** `Sol High bounded checkpoint only`
+- **Final alpha ranker:** `V3-B-STRUCTURE-LITE-V1-CANDIDATE-005`
+- **Final model SHA-256:** `1a702031113ff75f38158aa35d1c2bac477cd424d7f14b83d7a89e6c74fef0f6`
+- **Feature-order SHA-256:** `100ff7a9bacf394b2adc1daa7eb73b0fe7b89613a6918a9e4ded60ca67a55e9e`
+- **Alpha search:** `CLOSED`
+- **Path Risk V1:** `FAILED_CLOSED`
+- **Path Risk V2:** `FROZEN_IMPLEMENTED_PRE_OUTCOME`
+- **PR-002 viewed:** `false`
+- **PR-003 viewed:** `false`
+- **Path Risk F5/F6:** `SEALED`
+- **Fresh-forward post-2026-07-31 outcomes:** `LOCKED_NOT_ACCESSED`
+- **Calibration / alpha+risk integration / PnL / Kelly / paper/live:** `NOT_AUTHORIZED_AUTOMATICALLY`
+- **Execution frontier:** `checkout/import verification + full test suite; then one serialized PR-002/PR-003 F1-F4 discovery run`
+- **Parallel-safe support work:** `read-only test failure diagnosis, import/environment audit, provenance/spec verification when non-overlapping`
+- **Scientifically sequential boundary:** `do not launch later/rescue candidates or touch F5/F6 before current frozen discovery result`
+- **MAIN-retained work:** `gate protection, authoritative run decision, result interpretation, integration, status update`
+- **Current blocker:** `full local preflight/test result not yet returned for the frozen Path Risk V2 run`
+- **Next milestone:** `complete exactly one authorized PR-002/PR-003 F1-F4 discovery execution and record the frozen verdict without accessing F5/F6`
+
+A substantial future engineering task should not default to one Luna working alone. MAIN must first identify the ready independent workstreams and use LIGHT/HEAVY when that reduces wall-clock time safely.
