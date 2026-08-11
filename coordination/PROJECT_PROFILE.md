@@ -8,10 +8,10 @@ Only MAIN edits this file.
 - **Project:** IDX daily/EOD trade-setup research
 - **Primary repository:** `samindriano/idx-trade`
 - **Authoritative source branch:** `research/idx-ranking-v2-spec-v1`
-- **Source HEAD at sync:** `477b4411c8c294e9ca5012a3079248033de5641c`
+- **Source HEAD at sync:** `80d78a5bed812209639d8e5d07b44e908c3a1c57`
 - **Authoritative status document:** `docs/CURRENT_STATUS.md`
 - **Orchestra snapshot branch:** `orchestra/idx-trade`
-- **Last orchestra sync:** `2026-08-11T04:58:00Z`
+- **Last orchestra sync:** `2026-08-11T06:27:00Z`
 - **Snapshot freshness:** `CURRENT_AT_SOURCE_HEAD_ABOVE`
 - **Operating mode:** `EXPLORATORY_RESEARCH_ONLY`
 - **Initial venue:** IDX `REGULAR` market
@@ -34,9 +34,10 @@ Alpha architecture search is closed.
 - V4-A Participation: no survivor;
 - V4-B Price Path: no survivor;
 - V4-C Cross-Sectional Context: no survivor;
-- Path Risk V1 PR-001: failed/closed and may not be rescued;
-- Path Risk V2 PR-002/PR-003: frozen + implemented, real development outcomes not yet viewed;
-- Path Risk F5/F6: sealed;
+- Path Risk V1 PR-001: failed/closed;
+- Path Risk V2 PR-002/PR-003: both viewed and closed as `PATH_RISK_V2_DISCOVERY_FAIL_CLOSE`;
+- Path Risk V2 winner: none;
+- Path Risk F5/F6: sealed / not needed after V2 fail-close;
 - post-2026-07-31 fresh-forward outcomes: locked/unaccessed.
 
 Calibration, alpha+risk integration, execution-PnL, Kelly, paper trading, and live trading are not automatically authorized.
@@ -67,47 +68,21 @@ The orchestra is optimized to reduce wall-clock time with Luna xhigh concurrency
 
 Parallelize orthogonal implementation/audit work inside the current frozen experiment. Keep decision-dependent scientific learning sequential.
 
-Safe dimensions include:
+Safe dimensions include implementation hardening, independent tests, leakage/PIT/provenance audit, runtime/cache inspection, frontend/backend contract work, and independent result review.
 
-- implementation hardening;
-- independent regression/adversarial tests;
-- leakage/PIT/provenance audit;
-- runtime/cache/performance inspection;
-- backend/API/frontend contract inspection;
-- independent result validation/review;
-- independent root-cause investigations.
-
-Do not parallelize:
-
-- later candidates whose specification depends on a current result;
-- sealed-fold/outcome access;
-- F5/F6 winner selection during F1-F4 discovery;
-- post-result rescue candidates;
-- reopening final alpha architecture without new explicit authorization.
+Do not parallelize later candidates whose specification depends on a current result, sealed-fold/outcome access, post-result rescue candidates, or reopening final alpha architecture without explicit authorization.
 
 ## Current execution frontier
 
-The active task is a **HEAVY five-way Path Risk V2 pre-outcome hardening pass**.
+Path Risk V2 is closed. The five-worker HEAVY hardening task and subsequent serialized F1-F4 evidence run are complete.
 
-Run concurrently:
+Current safe frontier:
 
-1. W1 — PR-002 stop-touch classifier contract;
-2. W2 — PR-003 competing-risk/CIF contract;
-3. W3 — fold-specific alpha-only comparator leakage contract;
-4. W4 — runner/provenance/F1-F4 boundary contract;
-5. W5 — frozen gate/selection/spec consistency.
+1. preserve the final V3-B ranker and continue outcome-blind fresh-forward operation under the existing 100-session contract;
+2. keep Path Risk inactive unless a genuinely new preregistered V3 family is explicitly authorized;
+3. keep F5/F6, fresh-forward outcomes, calibration, risk integration, sizing, execution-PnL and paper/live blocked.
 
-Each worker owns a separate new test file and its own handoff. Workers do not edit shared production code. MAIN integrates after all five return and centrally patches any proven implementation-to-spec defect.
-
-The one real PR-002/PR-003 F1-F4 evidence-producing run remains serialized and blocked until:
-
-`PATH_RISK_V2_PARALLEL_HARDENING_PASS_READY_FOR_LOCAL_DISCOVERY`
-
-followed by the final local import/full-suite/provenance preflight.
-
-Root orchestra task:
-
-`coordination/handoffs/IDX-PRV2-PARALLEL-HARDENING-ORCHESTRA.md`
+No automatic Path Risk PR-004 rescue task exists.
 
 ## Current roles
 
@@ -126,7 +101,7 @@ MAIN owns integration, shared coordination state, final phase decisions, and the
 - final alpha model identity and exact 33-feature order;
 - historical folds/holdouts already consumed or sealed;
 - Path Risk V1 closed verdict;
-- Path Risk V2 PR-002/PR-003 candidate definitions and F1-F4-only discovery boundary;
+- Path Risk V2 PR-002/PR-003 fail-close verdict;
 - Path Risk F5/F6 seal;
 - fresh-forward 100-session H10-mature block after 2026-07-31;
 - no forward realized-outcome access before the explicit one-shot boundary;
