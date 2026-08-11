@@ -1,10 +1,16 @@
-# EXPERIMENT status
+# EXPERIMENT / RESEARCH status
 
-Owner: EXPERIMENT / Research Scout
+Owner: RESEARCH / EXPERIMENT
 
-Status: `PLANNED`
+Status: `UNASSIGNED`
 
-Owned task: `IDX-EXP-001`.
+Owned task: `none`.
 
-Scope: audit reusable patterns and propose research questions, target
-candidates, features, and baselines without acquiring data or training.
+Typical scope:
+
+- bounded hypotheses or research questions;
+- source-reuse or methodology audits;
+- current frozen experiment implementation/interpretation;
+- candidate comparison only after the required evidence exists.
+
+Research workers may run in parallel with validation/data/runtime workers when scopes are orthogonal, but must not launch decision-dependent future experiments early or redefine frozen targets/gates.
