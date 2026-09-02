@@ -16,7 +16,7 @@ The optimization target is **wall-clock speed subject to correctness, ownership,
 - Workers edit only their owned scope. Cross-ownership edits require a handoff and MAIN integration.
 - A successful handoff is evidence, not permission to start the next scientific or release phase.
 - Workers never spawn nested workers and never merge their own branches.
-- Concurrent writers require isolated worktrees or otherwise provably disjoint ownership.
+- Concurrent writers require local isolated worktrees or otherwise provably disjoint ownership; read-only workers do not require a worktree merely because they are workers.
 
 ## Control plane
 
@@ -40,6 +40,7 @@ Before any non-trivial engineering or research task, MAIN answers:
 2. **What is independent?** Remove overlapping ownership, duplicated implementation, and scopes that require a prior scientific decision.
 3. **What belongs to MAIN?** Keep integration-heavy, cross-cutting, or final-judgment work with MAIN.
 4. **What should launch now?** Spawn ready independent work before MAIN starts doing that same work itself.
+5. **Where should each worker run?** Prefer `LOCAL_CHILD_AGENT`; use stronger isolation only when the task actually requires it.
 
 The currently runnable independent set is the **execution frontier**.
 
@@ -50,6 +51,7 @@ Rules:
 - Do not manufacture parallelism by splitting one tightly coupled edit into artificial fragments.
 - Do not duplicate the same task across workers unless the explicit goal is independent comparison or adversarial review.
 - A substantial task that remains DIRECT must state why parallelism would not materially reduce wall-clock time.
+- A worker is a logical execution unit, not a requirement to create another user-facing conversation.
 
 ## Orchestration levels
 
@@ -82,11 +84,39 @@ Use when there are roughly 3–6 genuinely independent critical-path workstreams
 
 Partition ownership aggressively. Require a milestone review before integrating decision-changing results.
 
-HEAVY does not imply a stronger root model. It implies a wider useful execution frontier.
+HEAVY does not imply a stronger root model. It implies a wider useful execution frontier. It also does not imply multiple user-facing project chats.
 
 ### De-escalation
 
 Return to LIGHT or DIRECT as soon as dependencies collapse the frontier. Do not keep a HEAVY topology alive for maintenance, waiting, or trivial follow-ups.
+
+## Worker execution surface
+
+Default UX invariant:
+
+`ONE user request -> ONE visible MAIN session -> N internal/local workers`
+
+Execution-surface preference order:
+
+1. **`LOCAL_CHILD_AGENT`** — default whenever native local child/subagent execution is available. The child reports back to MAIN and does not become a separate user-facing project conversation.
+2. **`LOCAL_ISOLATED_WORKTREE`** — use when concurrent filesystem/Git writes require isolation. This is local filesystem isolation; MAIN remains the parent session.
+3. **`EXTERNAL_OR_REMOTE_WORKER`** — exception only. Use when the user explicitly requests it, the needed capability exists only remotely, native local child-agent execution is unavailable, or machine/resource isolation genuinely requires it. Record the reason.
+
+Read-only workers, source/document inspection, semantic audits, provenance/PIT review, code inspection, validation, and adversarial review should normally use `LOCAL_CHILD_AGENT` in the same checkout. Do not create one worktree per worker unless write-collision risk actually requires it.
+
+If local child-agent execution is unavailable and remote execution is not materially required, prefer graceful de-escalation or local sequential execution over silently creating multiple user-facing chats or cloud tasks.
+
+The preflight should state execution surfaces explicitly, for example:
+
+```text
+execution surface:
+- MAIN: LOCAL_PARENT
+- worker A: LOCAL_CHILD_AGENT
+- worker B: LOCAL_CHILD_AGENT
+- worker C: LOCAL_ISOLATED_WORKTREE  # only if write isolation is required
+```
+
+Any `EXTERNAL_OR_REMOTE_WORKER` entry requires an explicit reason.
 
 ## Research parallelism
 
@@ -124,13 +154,17 @@ Workers do not self-upgrade models. Record `model_used` and `reasoning_level` in
 
 ## Runtime layer
 
-Orchestra is a policy/control plane, not a session manager. Native Codex sessions, worktrees, Xirp, terminal/tmux layouts, or another runtime may execute the worker topology.
+Orchestra is a policy/control plane, not a session manager, but runtime choices are not equal defaults.
 
-Runtime tooling does not decide scientific dependencies, ownership, gates, or phase transitions. MAIN does.
+When native local Codex child-agent/subagent execution is available, `LOCAL_CHILD_AGENT` is the preferred worker runtime. Local Git worktrees remain the preferred escalation for write isolation. Xirp, terminal/tmux layouts, cloud tasks, remote worktrees, or other runtimes remain valid fallbacks when they provide a capability or isolation the local child-agent path cannot safely provide.
+
+Runtime tooling does not decide scientific dependencies, ownership, gates, or phase transitions. MAIN does. Runtime selection also must not silently multiply user-facing conversations.
 
 ## External research/review threads
 
 A project may use another ChatGPT/research thread as methodology or audit lead. Treat only explicit written specifications, linked artifacts, commits, or user instructions as transferable state. Do not assume another chat's unstated memory. The executing agent remains responsible for verifying repository state before edits.
+
+External research/review threads are explicit collaboration surfaces, not the default worker runtime for LIGHT/HEAVY orchestration.
 
 ## Generic roles
 
@@ -150,7 +184,10 @@ MAIN owns shared coordination state and final integration decisions.
 
 Every delegated task must state:
 
-- exact repository/worktree and base commit;
+- exact repository and base commit;
+- local checkout/worktree when relevant;
+- execution surface: `LOCAL_CHILD_AGENT`, `LOCAL_ISOLATED_WORKTREE`, or `EXTERNAL_OR_REMOTE_WORKER`;
+- parent session: normally `MAIN`;
 - task ID, role, and parallel group/frontier;
 - one bounded question;
 - owned files/scope and prohibited changes;
@@ -158,6 +195,8 @@ Every delegated task must state:
 - required deliverable;
 - validation/evidence required;
 - handoff destination and stopping condition.
+
+Workers never spawn nested workers, create a separate user-facing conversation, or move themselves to cloud/remote execution unless their assigned execution surface explicitly authorizes it.
 
 ## Coordination files and ceremony
 
@@ -180,6 +219,8 @@ task_id:
 parallel_group:
 model_used:
 reasoning_level:
+execution_surface:
+parent_session:
 source_repository:
 source_commit:
 branch:
