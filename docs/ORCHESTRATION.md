@@ -11,13 +11,14 @@ The operating objective is **minimum useful wall-clock time subject to correctne
 3. **Build the execution frontier.** List workstreams that can start now without waiting on another unfinished result.
 4. **Remove unsafe parallelism.** Eliminate overlapping ownership, duplicate work without a comparison purpose, and downstream research decisions that depend on current results.
 5. **Choose topology.** DIRECT for one useful sequential path; LIGHT for normal meaningful work with 2–3 ready paths; HEAVY for a wider 3–6-path frontier or decision-changing independent review.
-6. **Spawn first.** Launch ready workers before MAIN starts performing the same delegated work. MAIN retains cross-cutting architecture, coupling, synthesis, blocker resolution, and integration work.
-7. **Execute concurrently.** Workers solve bounded non-overlapping questions and stop on dependency/ownership/frozen-term violations.
-8. **Collect evidence.** Treat handoffs as evidence to verify, not automatic phase transitions.
-9. **Milestone review.** MAIN compares results, resolves conflicts, and records ACCEPT/REWORK/REJECT/INCONCLUSIVE/BLOCKED or project-equivalent decisions.
-10. **Integrate.** Check scope, diff, tests/validation, provenance, and unrelated user changes before integration.
-11. **Refresh status.** Update source project status and, when applicable, refresh the project-specific orchestra snapshot against the exact source commit.
-12. **De-escalate or stop.** Collapse HEAVY -> LIGHT -> DIRECT as dependencies narrow the frontier; stop when acceptance criteria are met or the premise is invalidated.
+6. **Choose execution surfaces.** Prefer local child agents; escalate to local worktree isolation only for real write-collision risk; use external/remote workers only with an explicit reason.
+7. **Spawn first.** Launch ready workers before MAIN starts performing the same delegated work. MAIN retains cross-cutting architecture, coupling, synthesis, blocker resolution, and integration work.
+8. **Execute concurrently.** Workers solve bounded non-overlapping questions and stop on dependency/ownership/frozen-term violations.
+9. **Collect evidence.** Treat handoffs as evidence to verify, not automatic phase transitions.
+10. **Milestone review.** MAIN compares results, resolves conflicts, and records ACCEPT/REWORK/REJECT/INCONCLUSIVE/BLOCKED or project-equivalent decisions.
+11. **Integrate.** Check scope, diff, tests/validation, provenance, and unrelated user changes before integration.
+12. **Refresh status.** Update source project status and, when applicable, refresh the project-specific orchestra snapshot against the exact source commit.
+13. **De-escalate or stop.** Collapse HEAVY -> LIGHT -> DIRECT as dependencies narrow the frontier; stop when acceptance criteria are met or the premise is invalidated.
 
 ## Parallelism preflight
 
@@ -36,7 +37,15 @@ MAIN-retained work:
 - <integration/cross-cutting/final judgment>
 
 selected topology: DIRECT | LIGHT | HEAVY
+
+execution surface:
+- MAIN: LOCAL_PARENT
+- worker A: LOCAL_CHILD_AGENT
+- worker B: LOCAL_CHILD_AGENT
+- worker C: LOCAL_ISOLATED_WORKTREE  # only if write isolation is required
+
 DIRECT rationale if substantial: <why workers would not shorten critical path>
+external/remote rationale if used: <why local execution is insufficient>
 ```
 
 A large task is not automatically HEAVY. A modest task can be LIGHT if several independent scopes are immediately runnable.
@@ -46,8 +55,8 @@ A large task is not automatically HEAVY. A modest task can be LIGHT if several i
 | Level | Use when | Pattern |
 |---|---|---|
 | DIRECT | one small or inherently sequential useful path | MAIN works directly + targeted verification |
-| LIGHT | 2–3 independent ready paths; default for meaningful work | MAIN + 1–3 bounded workers, launched concurrently |
-| HEAVY | 3–6 independent critical-path paths, broad separable migration/research, uncertain root cause, or high-value independent review | isolated ownership + concurrent execution + milestone review |
+| LIGHT | 2–3 independent ready paths; default for meaningful work | MAIN + 1–3 bounded local workers, launched concurrently |
+| HEAVY | 3–6 independent critical-path paths, broad separable migration/research, uncertain root cause, or high-value independent review | isolated ownership + concurrent local execution + milestone review |
 
 ### DIRECT is an exception for substantial work
 
@@ -74,9 +83,27 @@ A substantial task should not remain DIRECT merely because MAIN can complete all
 - independent adversarial review is decision-changing;
 - a single context window would otherwise force serial rediscovery across unrelated scopes.
 
+HEAVY means a wider logical execution frontier. It does **not** mean one user-facing chat or worktree per lane.
+
 ### Spawn-before-work rule
 
 If MAIN decides a scope belongs to a worker, spawn it before MAIN begins that scope. Late delegation after MAIN has already done most of the work defeats the latency objective.
+
+## Execution-surface hierarchy
+
+Use this order by default:
+
+1. **`LOCAL_CHILD_AGENT`** — native local child/subagent under the same MAIN session. Default for read-only work and safely disjoint delegated work.
+2. **`LOCAL_ISOLATED_WORKTREE`** — local Git/filesystem isolation when concurrent writes would otherwise collide. It is not a separate user-facing control plane.
+3. **`EXTERNAL_OR_REMOTE_WORKER`** — exception when explicitly requested by the user, required capability exists only remotely, local child-agent runtime is unavailable, or resource isolation genuinely requires it.
+
+Default UX invariant:
+
+`ONE user request -> ONE visible MAIN session -> N internal/local workers`
+
+A separate worktree is driven by write-collision risk, not worker count. A read-only worker does not need its own worktree. A logical worker does not need its own project chat.
+
+If local child-agent execution is unavailable and remote execution is not materially necessary, prefer de-escalating or executing locally/sequentially rather than silently multiplying visible chats or cloud tasks.
 
 ## MAIN's preferred work while workers run
 
@@ -111,7 +138,10 @@ Poor escalation cases: routine test fixes, parser edits, file moves, standard re
 Every worker prompt should include:
 
 ```text
-repository/worktree:
+repository:
+local checkout/worktree:
+execution surface: LOCAL_CHILD_AGENT | LOCAL_ISOLATED_WORKTREE | EXTERNAL_OR_REMOTE_WORKER
+parent session: MAIN
 base commit:
 task id:
 parallel group:
@@ -128,7 +158,7 @@ handoff path:
 stopping condition:
 ```
 
-Workers never spawn workers. Concurrent writers must not share ownership.
+Workers never spawn workers. Concurrent writers must not share ownership. Workers do not create a separate user-facing conversation or move themselves to cloud/remote execution unless their assigned execution surface explicitly authorizes it.
 
 ## Research integrity
 
