@@ -7,7 +7,10 @@ ROLE: <role>
 TASK ID: <id>
 PARALLEL GROUP: <group>
 
-Repository/worktree: <absolute path or owner/repo + branch>
+Repository: <owner/repo>
+Local checkout/worktree: <absolute local path when relevant>
+Execution surface: LOCAL_CHILD_AGENT | LOCAL_ISOLATED_WORKTREE | EXTERNAL_OR_REMOTE_WORKER
+Parent session: MAIN
 Base commit: <sha>
 Question/task: <one bounded question>
 Why this can run now: <dependencies already satisfied; independent from sibling scopes>
@@ -23,6 +26,8 @@ Prohibited changes:
 - do not merge/rebase/force-push
 - do not touch unrelated user changes
 - do not spawn workers
+- do not create a separate user-facing conversation
+- do not independently move the task to cloud/remote execution unless the assigned execution surface explicitly authorizes it
 - do not redefine frozen gates/targets/specifications
 - do not duplicate a sibling worker's owned scope
 
@@ -52,4 +57,6 @@ Write handoff to:
 coordination/handoffs/<task-id>-<role>.md
 ```
 
-A worker solves the assigned question quickly and independently. It does not redesign the entire project, wait for unrelated sibling work, or expand its scope simply because capacity remains.
+Execution-surface default is `LOCAL_CHILD_AGENT`. Use `LOCAL_ISOLATED_WORKTREE` only when concurrent filesystem/Git writes genuinely require isolation. Use `EXTERNAL_OR_REMOTE_WORKER` only with an explicit reason such as user request, unavailable local capability, or genuine remote/resource-isolation need.
+
+A worker solves the assigned question quickly and independently and reports back to MAIN. It does not redesign the entire project, wait for unrelated sibling work, expand its scope simply because capacity remains, or become a new user-facing control plane by default.
