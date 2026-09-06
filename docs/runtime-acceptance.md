@@ -31,7 +31,7 @@ skills, including the compatibility router.
 
 The installed runtime help and metadata are the primary compatibility evidence.
 Official documentation confirms [separate profile layers](https://learn.chatgpt.com/docs/config-file/config-advanced),
-[custom role precedence and subagent defaults](https://learn.chatgpt.com/docs/multi-agent),
+[custom role precedence and subagent defaults](https://learn.chatgpt.com/docs/agent-configuration/subagents),
 and the [exact context key](https://learn.chatgpt.com/docs/config-file/config-reference).
 
 Profiles are below project and CLI overrides. The desktop model picker alone is
