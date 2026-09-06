@@ -66,6 +66,11 @@ or quota benefit. Use the trial checklist to observe that separately.
 - Context feature reports enabled in the installed config and runtime. Both fresh
   tasks started and completed with it enabled; long-context recovery and quota
   benefits remain unmeasured.
+- A later Luna XHigh context capture initially found the host Python environment
+  had no usable temporary directory, so its first test rerun errored before setup.
+  Re-running with `TEMP`, `TMP`, and `TMPDIR` set to a writable workspace temp
+  directory passed all 11 tests. This was an environment issue, not a test or
+  installer failure; the repository remains clean.
 
 Fresh tasks emitted existing plugin-icon and Cloudflare MCP OAuth warnings. These
 were not changed or repaired by this task. Exit-zero model/skill acceptance should
