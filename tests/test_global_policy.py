@@ -31,7 +31,7 @@ class GlobalPolicyTests(unittest.TestCase):
             "skills/luna-orchestra/SKILL.md": "# Luna\n",
             "skills/orchestrate/SKILL.md": "# Orchestrate\n",
             "config/global-astra.config.toml": (
-                'developer_instructions = "ASTRA_ROOT CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
+                'developer_instructions = "ASTRA_ROOT MANUAL_EXPERIMENTAL EXPLICIT_USER_OPT_IN CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
                 'model = "gpt-6-astra"\n'
                 'model_reasoning_effort = "medium"\n'
             ),
@@ -130,8 +130,39 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertTrue(installed_config["plugins"]["example2"]["enabled"])
         self.assertEqual(installed_config["agents"]["default"]["description"], "legacy default")
 
+    def test_existing_root_defaults_are_repaired_and_verify_reports_them(self) -> None:
+        self._write_config(
+            'model = "gpt-6-astra"\n'
+            'model_reasoning_effort = "medium"\n'
+            'personality = "pragmatic"\n\n'
+            '[agents]\n'
+            'default_subagent_model = "gpt-6-astra"\n'
+            'default_subagent_reasoning_effort = "medium"\n\n'
+            '[plugins.example]\n'
+            'enabled = true\n'
+        )
+        global_policy.install(self.home, source_root=self.source)
+        config = global_policy._toml_bytes(self.home / "config.toml")
+        self.assertEqual(config["model"], "gpt-5.6-luna")
+        self.assertEqual(config["model_reasoning_effort"], "xhigh")
+        self.assertEqual(config["agents"]["default_subagent_model"], "gpt-5.6-luna")
+        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "xhigh")
+        self.assertEqual(config["personality"], "pragmatic")
+        self.assertTrue(config["plugins"]["example"]["enabled"])
+        report = global_policy.verify(self.home, source_root=self.source)
+        self.assertEqual(report["model"], "gpt-5.6-luna")
+        self.assertEqual(report["model_reasoning_effort"], "xhigh")
+        self.assertEqual(report["default_subagent_model"], "gpt-5.6-luna")
+        self.assertEqual(report["default_subagent_reasoning_effort"], "xhigh")
+
     def test_second_install_is_idempotent_without_a_new_backup(self) -> None:
-        self._write_config()
+        self._write_config(
+            'model = "gpt-6-astra"\n'
+            'model_reasoning_effort = "medium"\n\n'
+            '[agents]\n'
+            'default_subagent_model = "gpt-6-astra"\n'
+            'default_subagent_reasoning_effort = "medium"\n'
+        )
         first = global_policy.install(self.home, source_root=self.source)
         backup_root = self.home / "orchestra-backups"
         backups = sorted(backup_root.iterdir())

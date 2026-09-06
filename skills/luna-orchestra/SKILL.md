@@ -6,8 +6,10 @@ description: Throughput-oriented orchestration selected by the LUNA_ROOT runtime
 # Luna Orchestra
 
 Optimize useful verified work per constrained resource, subject to correctness and
-user intent. Luna XHigh is the root and default worker tier; execution width is a
-separate choice. Do not change model families or self-upgrade workers.
+user intent. Luna XHigh is the normal global root and worker tier for DIRECT,
+LIGHT, and HEAVY; execution width is a separate choice. Do not change model
+families or self-upgrade workers. Astra is manual-only and is never an automatic
+escalation for difficulty, conflict, review, HEAVY work, ambiguity, or disagreement.
 
 For meaningful work, perform a brief parallelism preflight: what can run now,
 which scopes are independent, what must MAIN retain, and what should launch early?
@@ -25,8 +27,9 @@ use isolated worktrees only where writes would collide. Workers do not spawn wor
 
 Each assignment names the exact source/commit where relevant, question, ownership,
 prohibited changes, deliverable, verification, and stop point. Use runtime-pinned
-`default`, `explorer`, or `worker` roles (`gpt-5.6-luna`, `xhigh`). If pinning cannot
-be established, stay DIRECT and report the gap; never silently inherit a costly tier.
+`default`, `explorer`, or `worker` roles (`gpt-5.6-luna`, `xhigh`) whenever workers
+are used. If pinning cannot be established, stay DIRECT and report the gap; never
+silently inherit a costly tier or switch to Astra.
 
 Request compact verdicts, decision-changing findings, exact file/run/commit references,
 counterexamples, UNKNOWNs, and next actions. Pull raw evidence only as needed.

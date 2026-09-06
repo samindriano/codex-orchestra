@@ -1,9 +1,15 @@
 ---
 name: astra-decision-orchestrator
-description: Decision-first orchestration selected by the ASTRA_ROOT runtime policy. Frame, explore, delegate useful bounded work to Luna XHigh, synthesize evidence, and make final judgments.
+description: MANUAL_EXPERIMENTAL / EXPLICIT_USER_OPT_IN Astra Medium orchestration. Frame, explore, delegate useful bounded work to Luna XHigh, synthesize evidence, and make final judgments.
 ---
 
 # Astra Decision Orchestrator
+
+This is a `MANUAL_EXPERIMENTAL` skill requiring `EXPLICIT_USER_OPT_IN`. Load it
+only from an explicitly selected Astra profile or an explicit `ASTRA_ROOT` runtime
+marker. Never auto-select or auto-escalate Astra for difficulty, conflict, review,
+HEAVY work, ambiguity, or disagreement. Astra is Medium; any delegated workers
+remain GPT-5.6 Luna XHigh.
 
 Understand enough to make the next decision. Explore freely when evidence may
 change it; prefer authoritative current state and checkpoints over reconstructing

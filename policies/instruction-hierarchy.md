@@ -11,13 +11,20 @@ Evidence precedence is actual repository / immutable artifacts, then authoritati
 project checkpoints, current task evidence, and finally notes. Notes can locate
 evidence; they cannot certify current state or authorize changes.
 
-Profiles are below project and CLI configuration in native precedence. A project
-or explicit override can change a model or developer instructions. Inspect effective
-configuration when an overlay changes those keys. Never combine one family's profile
-with a different family via `--model`; start a fresh matching profile. Same-family
-reasoning overrides keep the same policy.
+The normal global configuration default is GPT-5.6 Luna XHigh for the root and
+Luna XHigh for workers. Profiles are below project and CLI configuration in native
+precedence. The `global-astra` profile is `MANUAL_EXPERIMENTAL` and
+`EXPLICIT_USER_OPT_IN`: it selects Astra Medium only when the user explicitly
+starts that profile, and its workers remain Luna XHigh. A project or explicit
+override can change a model or developer instructions. Inspect effective
+configuration when an overlay changes those keys. Never combine one family's
+profile with a different family via `--model`; start a fresh matching profile.
+Same-family reasoning overrides keep the same policy.
 
-No automatic model-conditional AGENTS syntax is used. Unprofiled desktop sessions
-receive global safety and skill discovery but no inferred model-specific policy.
-The desktop model picker alone is not a verified profile selector. Use CLI profiles
-for reproducible routing during this experiment.
+DIRECT, LIGHT, and HEAVY are width choices, not escalation rules. Difficulty,
+conflict, review, HEAVY work, ambiguity, and disagreement never auto-select Astra.
+
+No automatic model-conditional AGENTS syntax is used. Unprofiled sessions use the
+normal Luna XHigh global default and global safety/skill discovery. The desktop
+model picker alone is not a verified profile selector. Use `global-astra` only as
+an explicit manual experiment and use CLI profiles for reproducible routing.

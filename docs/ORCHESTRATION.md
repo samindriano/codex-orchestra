@@ -1,8 +1,9 @@
 # Orchestration policy sources
 
-The canonical root workflows are now
-[ Astra Decision Orchestrator](../skills/astra-decision-orchestrator/SKILL.md) and
-[Luna Orchestra](../skills/luna-orchestra/SKILL.md), selected by supported profiles.
+The normal global root workflow is [Luna Orchestra](../skills/luna-orchestra/SKILL.md).
+The [Astra Decision Orchestrator](../skills/astra-decision-orchestrator/SKILL.md)
+is a manual experimental workflow requiring explicit user opt-in. Both are selected
+by supported profiles; no task difficulty or disagreement auto-escalates to Astra.
 See the [installation guide](../README.md) and
 [instruction hierarchy](../policies/instruction-hierarchy.md).
 

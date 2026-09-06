@@ -1,10 +1,14 @@
-# Lightweight Astra trials
+# Lightweight manual Astra trials
 
-Use comparable, meaningful tasks where possible:
+The normal control is the global Luna XHigh default. Use this checklist only after
+the user explicitly opts into the `MANUAL_EXPERIMENTAL` Astra profile; never use
+difficulty, conflict, review, HEAVY work, ambiguity, or disagreement as an automatic
+reason to switch roots. Use comparable, meaningful tasks where possible:
 
-1. Astra Medium DIRECT.
-2. Astra Medium plus one Luna XHigh worker.
-3. Astra Medium plus 2–3 useful independent Luna XHigh workers.
+1. Luna XHigh DIRECT baseline.
+2. Astra Medium DIRECT (explicit opt-in).
+3. Astra Medium plus one Luna XHigh worker (explicit opt-in).
+4. Astra Medium plus 2–3 useful independent Luna XHigh workers (explicit opt-in).
 
 Record the following once at start/end, without adding ceremony to every step:
 
@@ -13,7 +17,7 @@ Record the following once at start/end, without adding ceremony to every step:
 | Task / acceptance criteria | |
 | 5h allowance used or remaining (label which), reset time | |
 | Weekly allowance used or remaining (label which), reset time | |
-| Root model / reasoning / profile | |
+| Root model / reasoning / profile and explicit opt-in | |
 | Worker count, actual models and efforts from metadata | |
 | Start / end time and wall-clock | |
 | Meaningful verified work completed | |

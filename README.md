@@ -1,7 +1,8 @@
 # Codex Orchestra
 
-A versioned, offline-installable global foundation: Astra Medium decides, Luna
-XHigh executes, and parallelism earns its cost. Optimize useful verified work per
+A versioned, offline-installable global foundation: GPT-5.6 Luna XHigh is the
+normal global root and worker tier. Astra Medium remains a manual experimental
+profile requiring explicit user opt-in. Optimize useful verified work per
 constrained resource, subject to correctness and user intent.
 
 ## Architecture
@@ -19,14 +20,17 @@ there is no model introspection, conditional AGENTS syntax, or startup Git fetch
 
 | Profile | Root | Policy skill | Workers |
 |---|---|---|---|
-| global-astra | gpt-6-astra / medium | astra-decision-orchestrator | Luna xhigh |
+| normal global default | gpt-5.6-luna / xhigh | luna-orchestra | Luna xhigh |
+| global-astra (manual experimental, explicit opt-in) | gpt-6-astra / medium | astra-decision-orchestrator | Luna xhigh |
 | global-luna | gpt-5.6-luna / xhigh | luna-orchestra | Luna xhigh |
 
 DIRECT means one useful frontier, even for a difficult problem. LIGHT means roughly
 1–2 delegated lanes; HEAVY roughly 3–5, within runtime limits. Width does not select
-model intelligence. Astra is decision-first; Luna launches useful independent work
-more readily. Neither mode forces fan-out. The skills contain their own policies;
-`orchestrate` is only a compatibility router.
+model intelligence or escalate to Astra. Difficulty, conflict, review, HEAVY work,
+ambiguity, and disagreement never auto-select Astra. Astra is decision-first but
+manual-only; Luna launches useful independent work more readily. Neither mode
+forces fan-out. The skills contain their own policies; `orchestrate` is only a
+compatibility router.
 
 ## Install and verify
 
@@ -59,17 +63,20 @@ config after later user edits.
 
 ## Launch
 
-With an Astra-capable Codex binary selected:
+For the normal Luna default, start a fresh session with the installed configuration.
+For the manual Astra experiment, explicitly select the Astra profile:
 
 ```powershell
+codex
 codex --profile global-astra
 codex --profile global-luna
 ```
 
-Start a fresh session when switching root families. Do not combine the Astra profile
-with `--model` selecting Luna, or the reverse. Same-family effort changes retain
-policy. During a requested bootstrap test the root may print a one-line mode marker;
-ordinary tasks need no bootstrap ceremony.
+The unprofiled global configuration is Luna XHigh. Start a fresh session when
+switching root families. Do not combine the Astra profile with `--model` selecting
+Luna, or the reverse. Same-family effort changes retain policy. During a requested
+bootstrap test the root may print a one-line mode marker; ordinary tasks need no
+bootstrap ceremony.
 
 Profiles sit below project and CLI overrides. Projects overriding model or developer
 instructions must keep model/policy paired. The desktop model picker alone is not
@@ -78,8 +85,10 @@ fallback. Use the profiled CLI for the initial reproducible experiment.
 
 ## Worker enforcement
 
-`agents.default_subagent_model` and `default_subagent_reasoning_effort` provide
-Luna/xhigh defaults. The three built-in role names are overridden by standalone
+The top-level `model` and `model_reasoning_effort` provide the normal Luna/xhigh
+root default. `agents.default_subagent_model` and
+`default_subagent_reasoning_effort` provide Luna/xhigh worker defaults. The three
+built-in role names are overridden by standalone
 files in `agents/`, each pinning both values. Role settings take precedence over
 spawn values. Each role sets `agents.enabled=false` to disable nested delegation
 and replaces the root marker with LUNA_WORKER. Custom project roles can override

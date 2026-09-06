@@ -3,8 +3,9 @@
 
 The installer deliberately has a small write surface.  Repository-owned text
 and profile files are copied to their canonical locations; an existing
-``config.toml`` is edited only at the two ``[agents]`` defaults and, when
-explicitly requested, the context-management capability flag.
+``config.toml`` is edited only at the two root model defaults, the two
+``[agents]`` worker defaults, and, when explicitly requested, the
+context-management capability flag.
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ import tomllib
 ASTRA_MODEL = "gpt-6-astra"
 LUNA_MODEL = "gpt-5.6-luna"
 LUNA_REASONING = "xhigh"
+_ASTRA_MANUAL_MARKERS = ("MANUAL_EXPERIMENTAL", "EXPLICIT_USER_OPT_IN")
 
 _SOURCE_DESTINATIONS = (
     ("policies/GLOBAL_AGENTS.md", "AGENTS.md", "text"),
@@ -57,6 +59,8 @@ _PROFILE_REASONING = {
     "global-luna.config.toml": LUNA_REASONING,
 }
 _MANAGED_CONFIG_PATHS = {
+    ("model",): LUNA_MODEL,
+    ("model_reasoning_effort",): LUNA_REASONING,
     ("agents", "default_subagent_model"): LUNA_MODEL,
     ("agents", "default_subagent_reasoning_effort"): LUNA_REASONING,
 }
@@ -246,6 +250,41 @@ def _replace_key_in_section(
     return True
 
 
+def _replace_key_at_top_level(text: str, key: str, rendered: str) -> str:
+    """Replace or insert one assignment before the first TOML table."""
+
+    lines, ranges = _section_ranges(text)
+    table_starts = [start for start, _ in ranges.values()]
+    first_table = min(table_starts, default=len(lines))
+    found: list[int] = []
+    state: str | None = None
+    for index in range(first_table):
+        line = lines[index]
+        if state is None:
+            match = _ASSIGNMENT_RE.match(line)
+            if match and match.group(2) == key:
+                found.append(index)
+        state = _scan_multiline_state(line, state)
+    if len(found) > 1:
+        raise PolicyError(f"ambiguous duplicate key {key}")
+    if found:
+        index = found[0]
+        match = _ASSIGNMENT_RE.match(lines[index])
+        assert match is not None
+        value = match.group(3)
+        comment = _comment_start(value)
+        suffix = ""
+        if comment is not None:
+            suffix = value[comment:]
+        newline = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
+        lines[index] = f"{match.group(1)}{key} = {rendered}{('  ' + suffix.lstrip()) if suffix else ''}{newline}"
+        return "".join(lines)
+
+    newline = "\r\n" if any(line.endswith("\r\n") for line in lines) else "\n"
+    lines.insert(first_table, f"{key} = {rendered}{newline}")
+    return "".join(lines)
+
+
 def _ensure_section(text: str, section: str, key: str, rendered: str) -> str:
     lines, ranges = _section_ranges(text)
     if section in ranges:
@@ -266,6 +305,9 @@ def _edit_config(config_path: Path, enable_context_management: bool) -> tuple[by
     # Recompute table ranges after each insertion.  This keeps edits safe when
     # a fixture has no existing key/table and avoids broad regex rewrites.
     for path, value in _MANAGED_CONFIG_PATHS.items():
+        if len(path) == 1:
+            text = _replace_key_at_top_level(text, path[0], json.dumps(value))
+            continue
         section, key = path
         lines, ranges = _section_ranges(text)
         if section in ranges:
@@ -331,6 +373,10 @@ def _validate_profile(
         raise PolicyError(f"{path} lacks a non-empty developer_instructions marker")
     if marker not in developer_instructions:
         raise PolicyError(f"{path} developer_instructions must include {marker!r}")
+    if expected_model == ASTRA_MODEL:
+        for manual_marker in _ASTRA_MANUAL_MARKERS:
+            if manual_marker not in developer_instructions:
+                raise PolicyError(f"{path} must include Astra manual marker {manual_marker!r}")
     if data.get("model") != expected_model:
         raise PolicyError(f"{path} model must be {expected_model!r}")
     if data.get("model_reasoning_effort") != expected_reasoning:
@@ -623,7 +669,17 @@ def verify(
     context_enabled = _get_path(config_data, _CONTEXT_PATH) is True
     if require_context_management and not context_enabled:
         raise PolicyError(f"{config_path} features.context_management.experimental_mode must be true")
-    return {"verdict": "PASS", "verified_files": verified, "context_management_enabled": context_enabled}
+    return {
+        "verdict": "PASS",
+        "verified_files": verified,
+        "model": _get_path(config_data, ("model",)),
+        "model_reasoning_effort": _get_path(config_data, ("model_reasoning_effort",)),
+        "default_subagent_model": _get_path(config_data, ("agents", "default_subagent_model")),
+        "default_subagent_reasoning_effort": _get_path(
+            config_data, ("agents", "default_subagent_reasoning_effort")
+        ),
+        "context_management_enabled": context_enabled,
+    }
 
 
 def _resolve_cli_home(value: str | None) -> Path:
@@ -632,7 +688,14 @@ def _resolve_cli_home(value: str | None) -> Path:
 
 def _print_report(report: dict[str, Any]) -> None:
     print(f"VERDICT={report['verdict']}")
-    for key in ("changed_files", "verified_files"):
+    for key in (
+        "changed_files",
+        "verified_files",
+        "model",
+        "model_reasoning_effort",
+        "default_subagent_model",
+        "default_subagent_reasoning_effort",
+    ):
         if key in report:
             print(f"{key}=" + json.dumps(report[key], separators=(",", ":")))
     if report.get("backup_dir"):

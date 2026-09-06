@@ -1,6 +1,8 @@
 # Runtime acceptance — 2026-09-06
 
 This is a bounded local installation acceptance record, not a performance benchmark.
+The normal global default is now GPT-5.6 Luna XHigh; Astra Medium remains a
+manual experimental profile requiring explicit user opt-in.
 
 - Initial terminal CLI: 0.150.1. Profiles already use separate name.config.toml files.
 - Initial desktop engine: 0.153.1. The desktop independently updated to 0.153.4
@@ -22,10 +24,11 @@ This is a bounded local installation acceptance record, not a performance benchm
   noninteractive harness has TERM=dumb. Configuration acceptance is distinct from
   that terminal UI diagnostic.
 
-Independent read-only policy review: APPROVE. A hard sequential Astra decision
-stays DIRECT; Luna with two independent ready lanes may use LIGHT. Root model and
-worker count remain separate. Skill frontmatter validation passed for all three
-skills, including the compatibility router.
+The earlier independent read-only policy review remains applicable to the width
+semantics: a hard sequential task stays DIRECT and two independent ready lanes may
+use LIGHT. Root model and worker count remain separate. Under the revised policy,
+Astra is manual-only and no difficulty, conflict, review, HEAVY work, ambiguity, or
+disagreement auto-escalates the root.
 
 ## Sources and interpretation
 
@@ -43,7 +46,7 @@ Context management is experimental and account/rollout dependent. Enabled config
 accepted tools and a clean fresh task do not establish long-context recovery quality
 or quota benefit. Use the trial checklist to observe that separately.
 
-## Installed acceptance results
+## Prior installed acceptance results
 
 - Installer regression suite: 11 tests passed, including concurrent config-edit
   preservation. `git diff --check` passed.
@@ -77,3 +80,31 @@ were not changed or repaired by this task. Exit-zero model/skill acceptance shou
 not be described as an entirely warning-free environment. The project's no-network
 rule governs agent actions; connector initialization may still make runtime-level
 requests and is not a network sandbox.
+
+## Revised-policy continuation
+
+- The source policy now makes the normal global root and workers GPT-5.6 Luna
+  XHigh. Astra remains `MANUAL_EXPERIMENTAL` / `EXPLICIT_USER_OPT_IN` at Medium;
+  all delegated workers remain Luna XHigh.
+- Focused installer regression suite: 12 tests passed with `TEMP`, `TMP`, and
+  `TMPDIR` set to the writable `work\test-temp` directory.
+- `python -m py_compile scripts/global_policy.py tests/test_global_policy.py` and
+  `git diff --check` passed.
+- An isolated writable-home install followed by `verify --require-context-management`
+  passed and reported `model="gpt-5.6-luna"`, `model_reasoning_effort="xhigh"`,
+  Luna/xhigh worker defaults, and `context_management_enabled=true`.
+- The final read-only state of the requested real-home installation is PASS. It
+  created the timestamped backup
+  `C:\Users\Sam\.codex\orchestra-backups\20260906T152830942033Z`, with manifest
+  `C:\Users\Sam\.codex\orchestra-backups\20260906T152830942033Z\manifest.json`,
+  and installed the revised source policy, profiles, skills, and Luna root defaults.
+  `verify --require-context-management` passed against the real home.
+- The installed real config now reports `model="gpt-5.6-luna"`,
+  `model_reasoning_effort="xhigh"`, Luna/xhigh worker defaults, and
+  `context_management_enabled=true`; existing `personality`, plugin settings,
+  project trust entries, and other unowned settings were preserved.
+- The first synchronous attempt returned `WinError 5` while creating a backup path;
+  the later complete manifest and current hashes are authoritative, while the
+  delayed completion mechanism remains UNKNOWN.
+- A fresh Luna profile bootstrap was not run under the no-network constraint;
+  installed file/config verification passed instead.
