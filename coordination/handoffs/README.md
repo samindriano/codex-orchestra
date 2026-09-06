@@ -1,10 +1,11 @@
 # Handoff directory
 
-Each delegated task writes one file named `<task-id>-<role>.md` here.
+For projects that need durable handoffs, a delegated task may write one file named
+`<task-id>-<role>.md` here. Ordinary workers can return a compact packet in MAIN.
 A handoff records evidence; it never authorizes a downstream phase by itself.
 MAIN verifies it and records material decisions in `coordination/DECISIONS.md`.
 
-Required shape:
+Optional detailed shape:
 
 ```text
 # Handoff

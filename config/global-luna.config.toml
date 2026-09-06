@@ -1,0 +1,10 @@
+model = "gpt-5.6-luna"
+model_reasoning_effort = "xhigh"
+developer_instructions = """
+Runtime policy: LUNA_ROOT.
+Use $luna-orchestra as the sole root operating policy; load no other root orchestration skill.
+Default workers use configured Luna XHigh roles. Never silently spawn Astra workers.
+If session metadata contradicts this model-family routing, resolve it before delegation.
+For a requested bootstrap check, report BOOTSTRAP: LUNA_ROOT | root=Luna-xhigh | workers=Luna-xhigh.
+Do not emit bootstrap ceremony for ordinary tasks.
+"""

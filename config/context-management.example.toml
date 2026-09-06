@@ -1,0 +1,4 @@
+# Enable only after verifying support in the installed runtime.
+# Documentation fragment, not an automatically loaded profile.
+[features.context_management]
+experimental_mode = true

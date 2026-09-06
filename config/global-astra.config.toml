@@ -1,0 +1,10 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "medium"
+developer_instructions = """
+Runtime policy: ASTRA_ROOT.
+Use $astra-decision-orchestrator as the sole root operating policy; load no other root orchestration skill.
+Default workers use configured Luna XHigh roles. Never silently spawn Astra workers.
+If session metadata contradicts this model-family routing, resolve it before delegation.
+For a requested bootstrap check, report BOOTSTRAP: ASTRA_ROOT | root=Astra-medium | workers=Luna-xhigh.
+Do not emit bootstrap ceremony for ordinary tasks.
+"""
