@@ -1,166 +1,145 @@
-# CODEX ORCHESTRA TELEMETRY V1
+# CODEX ORCHESTRA TELEMETRY V1.1
 
-Telemetry V1 is an optional, local-only metadata ledger. It is not part of the
-model prompt, does not ask the root or a worker to report usage, and does not
-launch a telemetry worker. The automatic path is a Codex lifecycle command hook:
-`SessionStart` creates a run, `SubagentStart`/`SubagentStop` observe workers,
-`Interrupt` records an interruption, and `SessionEnd` ingests the exact
-transcript path and finalizes the run. Manual commands remain available for
-legacy or explicitly controlled observations.
+Telemetry is an optional, local-only JSONL ledger. It is outside the model
+loop, launches no worker, makes no network request, and emits no hook stdout.
+The schema remains `orchestra_telemetry_v1` for append-only compatibility.
 
-## Privacy and overhead contract
+## Two explicit layers
 
-The collector stores explicit short labels and structural metadata only. It does
-not persist prompts, responses, tool arguments, tool outputs, source contents,
-secrets, environment values, transcript paths, or full project paths. Session
-ingestion scans one explicit regular file, JSON-decodes only allowlisted
-`token_usage_record` lines, and extracts only scalar model/effort metadata from
-`turn_context` lines. Other JSONL records are skipped as bytes; their content is
-not fed into a model or written to the ledger.
+### Layer A: stable global hook metadata
 
-The normal measured-run target is:
+The automatic hook path records only fields supplied by the hook contract:
+
+- `session_id`, `hook_event_name`, `cwd` (reduced to project metadata), `model`,
+  lifecycle timestamps, interruption state, and subagent lifecycle fields;
+- normalized project kind: `GIT`, `NON_GIT`, `NO_PROJECT`, or `UNKNOWN`;
+- model names as open strings, including future model identifiers;
+- worker lifecycle counts independent of token attribution.
+
+`transcript_path` and `agent_transcript_path` may arrive in hook input, but the
+collector never opens, parses, watches, hashes, stores, or uses either path.
+The retired transcript parser is disabled. Codex documents the transcript
+format as unstable for hooks; see the [official hooks documentation](https://learn.chatgpt.com/docs/hooks).
+
+Profile, reasoning effort, and orchestra mode are not inferred from model names
+or worker counts. They remain `UNKNOWN`/`NONE` unless a canonical launcher sends
+the reserved explicit `orchestra_launcher` metadata object. Raw sessions use
+`orchestra_mode = NOT_APPLICABLE`.
+
+### Layer B: stable usage adapters
+
+Usage is populated only by an explicitly correlated machine-readable source:
+
+| Source | Status | Automatic by ordinary hooks |
+| --- | --- | --- |
+| `CODEX_EXEC_JSON` | Supported when exact `thread.started.thread_id` correlation succeeds | No |
+| `ORCHESTRA_LAUNCHER` | Supported when the canonical launcher supplies the values | Only when supplied |
+| `STABLE_RUNTIME_METADATA` | Reserved for a separately proven stable runtime field | No |
+| `MANUAL` | Separate user-supplied historical evidence | No |
+| `NONE` | Safe unknown fallback | Yes, for ordinary interactive sessions |
+
+The documented `codex exec --json` stream is JSONL and includes
+`turn.completed.usage`; the adapter requires an explicit expected thread ID and
+never uses newest-file, timestamp, latest-session, or directory-scanning
+correlation. See the [official non-interactive mode documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
+
+If no supported source is available, all usage values are null and
+`usage_quality = UNKNOWN`. `UNKNOWN` is preferred to unstable inference.
+
+Each usage-bearing record includes:
+
+- `usage_source`: `CODEX_EXEC_JSON`, `ORCHESTRA_LAUNCHER`,
+  `STABLE_RUNTIME_METADATA`, `MANUAL`, or `NONE`;
+- `usage_quality`: `EXACT`, `PARTIAL`, or `UNKNOWN`;
+- `source_capability`: `USAGE_SOURCE_SUPPORTED`, `USAGE_SOURCE_PARTIAL`,
+  `USAGE_SOURCE_UNSTABLE`, or `USAGE_SOURCE_UNAVAILABLE`.
+
+The canonical numeric fields are `input_tokens`, `cached_input_tokens`,
+`output_tokens`, `reasoning_tokens`, and `total_tokens`. Missing values remain
+null; they are never converted to zero.
+
+## Root and worker attribution
+
+`ROOT_WORKER_USAGE_PARTIAL` remains the honest automatic capability. A
+`SubagentStart`/`SubagentStop` pair records worker identity, model, status, and
+counts, but does not imply worker token usage. For example, three workers may
+be started while worker token usage remains unknown.
+
+## Privacy and overhead
+
+The ledger never persists prompts, responses, tool arguments or outputs, source
+contents, command output, secrets, environment dumps, transcript paths, or full
+personal paths. Project classification is local and stores only normalized
+metadata.
+
+Every run records measurement fields fixed by the collector:
 
 - additional model requests: `0`;
-- telemetry-specific worker launches: `0`;
+- telemetry workers launched: `0`;
 - additional model-context tokens: `0`;
-- local collector work: `NEGLIGIBLE_LOCAL_OVERHEAD`, measured with wall/CPU time
-  and bytes read/written where available.
+- local wall/CPU time and bytes read/written where available.
 
-Every run carries `measurement_overhead_class`, `measurement_validity`,
-`telemetry_model_requests_added`, `telemetry_tokens_added`,
-`telemetry_worker_launches_added`, and `telemetry_context_tokens_added`. The
-collector fixes the last four fields to zero; it has no option to claim model
-work that it did not measure. If a future integration cannot preserve this
-contract, the required verdict is `ORCHESTRA_TELEMETRY_V1_REWORK_REQUIRED`.
-
-## Observed Codex source
-
-The installed CLI was inspected locally as `codex-cli 0.153.1`. Rollout JSONL
-contains `token_usage_record` events with these allowlisted fields:
-
-```text
-payload.session_id
-payload.thread_id
-payload.usage.*
-payload.turn_token_usage.*
-payload.thread_token_usage.*
-```
-
-The numeric usage fields are input, cached input, cache-write input, output,
-reasoning output, and total tokens. The collector uses the latest
-`thread_token_usage` per exact transcript and aggregates independent root/worker
-observations. If no usage event is available, values remain `null`; they are
-never changed to zero. Automatic root/worker attribution is
-`ROOT_WORKER_USAGE_PARTIAL`: root and worker transcript paths are bound by
-lifecycle-provided session IDs, but Codex does not expose a complete stable
-profile/mode/worker inventory in one metadata record.
-
-The hook input exposes the active model slug. Reasoning effort is recovered from
-the allowlisted scalar `turn_context.effort` field. Profile name and orchestra
-mode remain `UNKNOWN` unless a future Codex hook exposes them; model and effort
-are open strings, so future model names require no schema change.
-
-## Storage and record lifecycle
+## Storage and fail-open behavior
 
 The default ledger is `CODEX_HOME/orchestra-telemetry/ledger.jsonl`, or
-`~/.codex/orchestra-telemetry/ledger.jsonl` when `CODEX_HOME` is not set. The
-directory is private where the platform supports permissions. A persistent lock
-serializes writers; each append validates the complete existing ledger, writes a
-new complete file in the same directory, fsyncs it, and atomically replaces the
-ledger. A malformed, truncated, unknown-schema, unknown-field, or duplicate-ID
-ledger blocks further writes and reporting.
+`~/.codex/orchestra-telemetry/ledger.jsonl` when `CODEX_HOME` is unset. Writers
+use a private directory, a persistent lock, full-ledger validation, fsync, and
+atomic replacement. Corrupt ledgers block telemetry writes and reporting, but
+the command hook still exits successfully so telemetry failure cannot become a
+Codex task failure.
 
-The canonical codex-orchestra installer has one explicit telemetry mapping:
-
-```text
-scripts/orchestra_telemetry.py
-    -> CODEX_HOME/scripts/orchestra_telemetry.py
-config/hooks.json
-    -> CODEX_HOME/hooks.json (merged with existing user hooks)
-```
-
-No other repository scripts are copied. Hook execution is still optional: Codex
-requires a one-time review/trust decision for non-managed user hooks. The hook
-checks `CODEX_ORCHESTRA_TELEMETRY`; values `0`, `false`, `off`, `disabled`, and
-`no` make it return without creating or changing a ledger.
-
-Records are append-only events folded into a run view:
-
-- `run_start` — task label/class/complexity, explicit orchestra metadata, and
-  unknown-safe initial fields;
-- `usage_observed` — synthetic usage or allowlisted root/worker usage from an
-  exact hook transcript path;
-- `metadata_observed` — model, effort, project, and other allowlisted runtime
-  metadata;
-- `worker_observed` — exact lifecycle worker identity/model/effort when exposed;
-- `interruption_observed` — a structured interruption marker without content;
-- `run_finalize` — timing, exit/validation fields, and completion state;
-- `allowance_snapshot` — explicit before/after subscription snapshots;
-- `annotation` — reviewer/first-pass/rework and successor lineage;
-- `legacy_manual_observation` — separate approximate historical evidence.
+`CODEX_ORCHESTRA_TELEMETRY=0` (also `false`, `off`, `disabled`, or `no`) makes
+the hook return without creating or changing the ledger.
 
 ## Commands
 
-The commands do not invoke `codex` or any model API. A minimal wrapper can create
-metadata before a normal run and finalize after it:
+Create and finalize metadata without involving Codex:
 
 ```powershell
-$codexHomeForTelemetry = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }
-$store = Join-Path $codexHomeForTelemetry 'orchestra-telemetry'
-$start = python scripts/orchestra_telemetry.py --store $store create `
-  --task-label github-ci-remediation --task-class DEBUGGING --complexity MEDIUM `
-  --mode DIRECT --root-model gpt-5.6-luna --root-reasoning-effort xhigh
-$run = ($start | ConvertFrom-Json).run_id
-
-# Run Codex normally here. No telemetry prompt or worker is added.
+python scripts/orchestra_telemetry.py --store $store create `
+  --task-label example --task-class CODE_CHANGE --complexity SMALL --mode DIRECT
 
 python scripts/orchestra_telemetry.py --store $store finalize --run-id $run `
-  --session-file $env:CODEX_ROLLOUT_JSONL --completed true `
-  --validation-status PASS --process-exit-status 0
-python scripts/orchestra_telemetry.py --store $store report
+  --completed true --validation-status PASS
 ```
 
-The post-run source parser can also be called separately:
+Ingest a documented `codex exec --json` output file only with its exact thread
+identifier:
 
 ```powershell
-python scripts/orchestra_telemetry.py --store $store ingest `
-  --run-id $run --session-file $env:CODEX_ROLLOUT_JSONL
+python scripts/orchestra_telemetry.py --store $store ingest-exec-json `
+  --run-id $run --source-file .\exec-output.jsonl --thread-id $threadId
 ```
 
-The automatic hook command is best-effort and fail-open. It emits no stdout,
-never blocks a model request with a prompt, and swallows collector failures so a
-corrupt ledger or unavailable transcript cannot break raw Codex usage. Exact
-session/transcript correlation is required; a mismatched session ID is not
-ingested. A terminal crash or forced process kill that emits no lifecycle hook
-remains an explicit coverage blind spot.
+`ingest-synthetic`, `snapshot`, `annotate`, and `import-manual` remain available.
+Synthetic and approximate manual records stay separate from ordinary run
+counts.
 
-For development, `ingest-synthetic` creates a fully deterministic usage event
-without any session file or model call. `snapshot` records explicit allowance
-before/after values. `annotate` records review and rework lineage. `import-manual`
-is intentionally marked `APPROXIMATE_MANUAL` and is excluded from run counts.
+## Reporting
 
-Reporting is descriptive and offline. It groups by task class, mode, root model,
-reasoning effort, and worker count, and reports completion, first-pass, rework,
-medians, and allowance deltas only when denominators exist. It emits no routing
-recommendation or composite quality score. Synthetic runs are explicitly marked
-by `source_kind = SYNTHETIC_FIXTURE` and excluded from default reports; use
-`report --include-synthetic` only for fixture inspection. Approximate manual
-observations remain separate from both normal and synthetic run counts.
+Reports are descriptive and offline. Unknown usage is never treated as zero.
+Token medians include a sample-size field such as
+`median_total_tokens_n`, plus `usage_qualified_runs` and `usage_total_runs`.
+No routing recommendation or composite quality score is emitted.
+
+## Installation boundary
+
+The canonical installer copies only the collector and merged lifecycle hooks
+into an explicitly selected `CODEX_HOME`. Validate installation in a temporary
+home first with install, verify, and a second-install idempotence check. Do not
+install or trust hooks in a real home without explicit user authorization.
 
 ## Validation
-
-Run the existing suite and the telemetry tests from the source worktree:
 
 ```powershell
 python -m unittest discover -s tests -v
 python -m py_compile scripts/orchestra_telemetry.py tests/test_orchestra_telemetry.py
+python -m compileall -q scripts tests
 git diff --check
 ```
 
-Tests cover telemetry-off isolation, automatic lifecycle create/ingest/finalize,
-future model strings, exact correlation, worker aggregation, interruption
-retention, content non-persistence, unknown-safe missing usage, duplicate and
-corruption handling, offline deterministic reporting, allowance/manual
-separation, concurrent writes, hook merge/idempotence, and the absence of
-model/network/worker runtime calls. Validate installation in an isolated
-temporary `CODEX_HOME` before applying it to a real home.
+The telemetry tests cover transcript non-opening, malicious/huge transcript
+isolation, stable model capture, future model labels, unknown effort/profile,
+interactive unknown usage, exact `codex exec --json` usage, malformed-source
+fallback, concurrent correlation, root/worker attribution, privacy, reporting
+sample sizes, fail-open behavior, and telemetry-off behavior.

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Passive, local-only CODEX ORCHESTRA TELEMETRY V1.
 
-The collector is deliberately outside the model loop.  It reads only the
-allowlisted numeric fields of Codex ``token_usage_record`` events and the
-allowlisted lifecycle metadata delivered to command hooks.  It stores
-normalized metadata in an append-only JSONL ledger.  It never calls Codex,
-launches workers, or persists conversation content.
+The automatic hook path consumes only stable lifecycle metadata delivered to
+command hooks.  It deliberately accepts, but never opens or parses,
+``transcript_path`` or ``agent_transcript_path``.  Exact usage is an explicit
+adapter for the documented ``codex exec --json`` JSONL stream or trusted
+launcher metadata; interactive sessions without one of those sources retain
+null usage fields.  The collector never calls Codex, launches workers, or
+persists conversation content.
 """
 
 from __future__ import annotations
@@ -41,7 +43,7 @@ RECORD_TYPES = {
     "annotation",
     "legacy_manual_observation",
 }
-MODES = {"DIRECT", "LIGHT", "HEAVY", "MANUAL", "UNKNOWN"}
+MODES = {"DIRECT", "LIGHT", "HEAVY", "MANUAL", "NOT_APPLICABLE", "UNKNOWN"}
 TASK_CLASSES = {
     "CODE_CHANGE",
     "RESEARCH",
@@ -54,7 +56,16 @@ TASK_CLASSES = {
     "UNKNOWN",
 }
 COMPLEXITIES = {"SMALL", "MEDIUM", "LARGE", "UNKNOWN"}
-PROJECT_KINDS = {"GIT", "NO_PROJECT", "UNKNOWN"}
+PROJECT_KINDS = {"GIT", "NON_GIT", "NO_PROJECT", "UNKNOWN"}
+USAGE_SOURCES = {"CODEX_EXEC_JSON", "ORCHESTRA_LAUNCHER", "STABLE_RUNTIME_METADATA", "MANUAL", "NONE"}
+USAGE_QUALITY = {"EXACT", "PARTIAL", "UNKNOWN"}
+USAGE_SOURCE_CAPABILITIES = {
+    "USAGE_SOURCE_SUPPORTED",
+    "USAGE_SOURCE_PARTIAL",
+    "USAGE_SOURCE_UNSTABLE",
+    "USAGE_SOURCE_UNAVAILABLE",
+}
+REASONING_EFFORT_SOURCES = {"LAUNCHER", "PROFILE", "STABLE_RUNTIME_METADATA", "NONE"}
 MEASUREMENT_SCOPES = {"UNCLASSIFIED", "SUBSTANTIVE", "TRIVIAL", "SYNTHETIC", "EXCLUDED"}
 MEASUREMENT_OVERHEAD = {
     "ZERO_MODEL_OVERHEAD",
@@ -72,9 +83,6 @@ MEASUREMENT_VALIDITY = {
 # name, but cannot accidentally persist a drive, UNC path, or directory string.
 _LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@_+-]{0,79}$")
 _MODEL_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@+:/-]{0,119}$")
-_TYPE_RE = re.compile(br'^\s*\{.*?"type"\s*:\s*"([^"\\]+)"')
-_TURN_MODEL_RE = re.compile(br'"model"\s*:\s*"([^"\\]*)"')
-_TURN_EFFORT_RE = re.compile(br'"effort"\s*:\s*"([^"\\]*)"')
 _DISABLE_VALUES = {"0", "false", "off", "disabled", "no"}
 
 
@@ -91,7 +99,7 @@ class DuplicateRecordError(TelemetryError):
 
 
 class SessionParseError(TelemetryError):
-    """An allowlisted session event could not be safely parsed."""
+    """Legacy transcript parsing was requested; it is intentionally disabled."""
 
 
 def _utc_now() -> str:
@@ -197,10 +205,15 @@ def _usage(values: dict[str, Any] | None = None) -> dict[str, int | None]:
         "cached_input_tokens",
         "cache_write_input_tokens",
         "output_tokens",
+        "reasoning_tokens",
         "reasoning_output_tokens",
         "total_tokens",
     ):
         result[name] = _nonnegative_int(values.get(name), field=f"usage.{name}")
+    if result["reasoning_tokens"] is None:
+        result["reasoning_tokens"] = result["reasoning_output_tokens"]
+    if result["reasoning_output_tokens"] is None:
+        result["reasoning_output_tokens"] = result["reasoning_tokens"]
     return result
 
 
@@ -274,12 +287,12 @@ class _LedgerLock:
 def _allowed_fields(record_type: str) -> set[str]:
     common = {"schema", "record_type", "record_id", "recorded_at_utc"}
     fields = {
-        "run_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "execution", "result", "economics", "measurement"},
-        "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "session_id", "thread_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement"},
-        "metadata_observed": {"run_id", "source_kind", "root_model", "root_reasoning_effort", "profile", "orchestra_mode", "project_kind", "project_label", "measurement_quality"},
-        "worker_observed": {"run_id", "worker_id", "agent_type", "model", "reasoning_effort", "launch_status", "measurement_quality"},
+        "run_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "economics", "measurement"},
+        "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "source_capability", "usage_source", "usage_quality", "session_id", "thread_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement"},
+        "metadata_observed": {"run_id", "source_kind", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "project_kind", "project_label", "measurement_quality"},
+        "worker_observed": {"run_id", "worker_id", "agent_type", "model", "reasoning_effort", "reasoning_effort_source", "launch_status", "measurement_quality"},
         "interruption_observed": {"run_id", "session_id", "thread_id", "reason", "measurement_quality"},
-        "run_finalize": {"run_id", "ended_at_utc", "usage", "execution", "result", "measurement"},
+        "run_finalize": {"run_id", "ended_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "measurement"},
         "allowance_snapshot": {"run_id", "snapshot_kind", "source", "measurement_quality", "five_hour_allowance_pp", "weekly_allowance_pp", "credit_balance", "captured_at_utc"},
         "annotation": {"run_id", "reviewer_verdict", "first_pass", "rework_required", "rework_reason_code", "successor_run_id", "measurement_quality"},
         "legacy_manual_observation": {"observation_id", "label", "source_note", "measurement_quality", "root_model", "reasoning_effort", "mode", "worker_count", "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens", "weekly_allowance_before_pp", "weekly_allowance_after_pp", "five_hour_allowance_before_pp", "five_hour_allowance_after_pp", "observed_at_utc"},
@@ -438,6 +451,10 @@ def create_run(
     mode: str = "UNKNOWN",
     root_model: str | None = None,
     root_reasoning_effort: str | None = None,
+    profile: str | None = None,
+    reasoning_effort_source: str | None = None,
+    usage_source: str = "NONE",
+    usage_quality: str = "UNKNOWN",
     requested_worker_count: int | None = None,
     actual_worker_count: int | None = None,
     workers: Iterable[dict[str, Any]] = (),
@@ -454,7 +471,19 @@ def create_run(
         "complexity": _enum(complexity, COMPLEXITIES, field="complexity"),
         "measurement_scope": _enum(measurement_scope, MEASUREMENT_SCOPES, field="measurement_scope"),
     }
-    root = {"model": _model_label(root_model, field="root_model"), "reasoning_effort": _label(root_reasoning_effort, field="root_reasoning_effort")}
+    normalized_effort = _label(root_reasoning_effort, field="root_reasoning_effort")
+    effort_source = _enum(
+        reasoning_effort_source or ("LAUNCHER" if normalized_effort else "NONE"),
+        REASONING_EFFORT_SOURCES,
+        field="reasoning_effort_source",
+    )
+    if normalized_effort is None:
+        effort_source = "NONE"
+    root = {
+        "model": _model_label(root_model, field="root_model"),
+        "reasoning_effort": normalized_effort,
+        "profile": _label(profile, field="profile"),
+    }
     worker_list: list[dict[str, Any]] = []
     for index, worker in enumerate(workers):
         if not isinstance(worker, dict):
@@ -463,6 +492,11 @@ def create_run(
             "ordinal": index,
             "model": _model_label(worker.get("model"), field="worker.model"),
             "reasoning_effort": _label(worker.get("reasoning_effort"), field="worker.reasoning_effort"),
+            "reasoning_effort_source": _enum(
+                worker.get("reasoning_effort_source") or ("LAUNCHER" if worker.get("reasoning_effort") else "NONE"),
+                REASONING_EFFORT_SOURCES,
+                field="worker.reasoning_effort_source",
+            ),
             "launch_status": _enum(str(worker.get("launch_status", "UNKNOWN")), {"LAUNCHED", "COMPLETED", "CANCELLED", "FAILED", "UNKNOWN"}, field="worker.launch_status"),
         })
     if actual_worker_count is None and worker_list:
@@ -473,6 +507,10 @@ def create_run(
         "requested_worker_count": _nonnegative_int(requested_worker_count, field="requested_worker_count"),
         "actual_worker_count": _nonnegative_int(actual_worker_count, field="actual_worker_count"),
         "workers": worker_list,
+        "workers_started": sum(worker["launch_status"] == "LAUNCHED" for worker in worker_list),
+        "workers_completed": sum(worker["launch_status"] == "COMPLETED" for worker in worker_list),
+        "workers_cancelled": sum(worker["launch_status"] == "CANCELLED" for worker in worker_list),
+        "workers_failed": sum(worker["launch_status"] == "FAILED" for worker in worker_list),
         "max_concurrency": _nonnegative_int(max_concurrency, field="max_concurrency"),
         "attribution_quality": "DECLARED" if root["model"] or root["reasoning_effort"] or worker_list else "UNKNOWN",
         "attribution_source": "EXPLICIT_LAUNCH_METADATA" if root["model"] or root["reasoning_effort"] or worker_list else "UNKNOWN",
@@ -484,6 +522,9 @@ def create_run(
         orchestra=orchestra,
         started_at_utc=_utc_now(),
         usage=_usage(),
+        usage_source=_enum(usage_source, USAGE_SOURCES, field="usage_source"),
+        usage_quality=_enum(usage_quality, USAGE_QUALITY, field="usage_quality"),
+        reasoning_effort_source=effort_source,
         execution=_empty_execution(),
         result=_empty_result(),
         economics={"snapshots": [], "five_hour_pp_consumed": None, "weekly_pp_consumed": None},
@@ -492,12 +533,12 @@ def create_run(
     return store.append(record, unique_run_id=True)
 
 
-def _session_file(path: Path | str) -> Path:
+def _structured_usage_file(path: Path | str) -> Path:
     candidate = Path(path).expanduser()
     if candidate.is_symlink() or not candidate.is_file():
-        raise SessionParseError("session source must be an explicit regular file, not a symlink or directory")
+        raise TelemetryError("usage source must be an explicit regular file, not a symlink or directory")
     if candidate.suffix.lower() not in {".jsonl", ".ndjson"}:
-        raise SessionParseError("session source must use a .jsonl or .ndjson extension")
+        raise TelemetryError("usage source must use a .jsonl or .ndjson extension")
     return candidate
 
 
@@ -511,85 +552,142 @@ class UsageObservation:
     thread_id: str | None
     usage: dict[str, int | None]
     observed_event_count: int
-    model: str | None = None
-    reasoning_effort: str | None = None
+    usage_source: str = "NONE"
+    usage_quality: str = "UNKNOWN"
+    source_capability: str = "USAGE_SOURCE_UNAVAILABLE"
 
 
-def _event_kind(line: bytes) -> str | None:
-    match = _TYPE_RE.match(line)
-    return match.group(1).decode("ascii", errors="ignore") if match else None
+def _unknown_usage_observation(*, source_digest: str, bytes_read: int, collector_wall_ms: float, collector_cpu_ms: float, source_capability: str) -> UsageObservation:
+    return UsageObservation(
+        source_digest=source_digest,
+        bytes_read=bytes_read,
+        collector_wall_ms=collector_wall_ms,
+        collector_cpu_ms=collector_cpu_ms,
+        session_id=None,
+        thread_id=None,
+        usage=_usage(),
+        observed_event_count=0,
+        usage_source="NONE",
+        usage_quality="UNKNOWN",
+        source_capability=source_capability,
+    )
 
 
-def parse_session_usage(path: Path | str) -> UsageObservation:
-    """Parse only numeric fields from allowlisted token usage events.
+def parse_codex_exec_json(path: Path | str, *, expected_thread_id: str | None = None) -> UsageObservation:
+    """Parse the documented ``codex exec --json`` JSONL output.
 
-    Non-usage JSONL records are skipped as bytes.  Their prompt/response/tool
-    content is never JSON-decoded, retained, or emitted.
+    This adapter is explicit and exact-correlated.  It never accepts a
+    transcript path and it never guesses by newest-file, timestamp, or
+    directory scanning.  A malformed or ambiguously correlated stream yields
+    unknown usage rather than an inferred value.
     """
 
-    source = _session_file(path)
+    source = _structured_usage_file(path)
     start_wall = time.perf_counter()
     start_cpu = time.process_time()
     digest = hashlib.sha256()
     bytes_read = 0
-    event_count = 0
-    session_id: str | None = None
-    thread_id: str | None = None
-    latest: dict[str, Any] | None = None
-    model: str | None = None
-    reasoning_effort: str | None = None
+    thread_ids: list[str] = []
+    turn_usages: list[dict[str, Any]] = []
+    malformed = False
     with source.open("rb") as handle:
         for line_number, line in enumerate(handle, 1):
             bytes_read += len(line)
-            digest.update(line)
-            event_kind = _event_kind(line)
-            if event_kind == "turn_context":
-                # The rollout wire format contains other prompt-adjacent
-                # fields on this line.  Extract only the two allowlisted
-                # scalar metadata values without JSON-decoding that content.
-                if model is None:
-                    match = _TURN_MODEL_RE.search(line)
-                    if match:
-                        model = _model_label(match.group(1).decode("utf-8", errors="ignore"), field="turn_context.model")
-                if reasoning_effort is None:
-                    match = _TURN_EFFORT_RE.search(line)
-                    if match:
-                        reasoning_effort = _label(match.group(1).decode("utf-8", errors="ignore"), field="turn_context.effort")
-                continue
-            if event_kind != "token_usage_record":
+            if not line.strip():
                 continue
             try:
                 event = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                raise SessionParseError(f"invalid allowlisted usage event at line {line_number}") from exc
-            if event.get("type") != "token_usage_record" or not isinstance(event.get("payload"), dict):
-                raise SessionParseError(f"malformed usage event at line {line_number}")
-            payload = event["payload"]
-            raw_usage = payload.get("thread_token_usage") or payload.get("usage")
-            if not isinstance(raw_usage, dict):
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                digest.update(b"<malformed>\n")
+                malformed = True
                 continue
-            latest = raw_usage
-            event_count += 1
-            if session_id is None and isinstance(payload.get("session_id"), str):
-                session_id = payload["session_id"]
-            if thread_id is None and isinstance(payload.get("thread_id"), str):
-                thread_id = payload["thread_id"]
+            if not isinstance(event, dict):
+                digest.update(b"<non-object>\n")
+                malformed = True
+                continue
+            event_type = event.get("type")
+            if event_type == "thread.started":
+                thread_id = event.get("thread_id")
+                if isinstance(thread_id, str) and thread_id:
+                    thread_ids.append(thread_id)
+                    digest.update(json.dumps({"type": event_type, "thread_id": thread_id}, sort_keys=True).encode("utf-8"))
+            elif event_type == "turn.completed":
+                raw_usage = event.get("usage")
+                if not isinstance(raw_usage, dict):
+                    digest.update(b"<turn-without-usage>\n")
+                    malformed = True
+                    continue
+                turn_usages.append(raw_usage)
+                digest.update(json.dumps({"type": event_type, "usage": raw_usage}, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     wall_ms = (time.perf_counter() - start_wall) * 1000.0
     cpu_ms = (time.process_time() - start_cpu) * 1000.0
-    observed_usage = _usage(latest)
-    observed_usage["model_requests"] = event_count or None
+    thread_id = thread_ids[0] if len(set(thread_ids)) == 1 else None
+    if expected_thread_id is not None and thread_id != expected_thread_id:
+        return _unknown_usage_observation(
+            source_digest=digest.hexdigest(),
+            bytes_read=bytes_read,
+            collector_wall_ms=wall_ms,
+            collector_cpu_ms=cpu_ms,
+            source_capability="USAGE_SOURCE_UNAVAILABLE",
+        )
+    if malformed or thread_id is None or not turn_usages:
+        return _unknown_usage_observation(
+            source_digest=digest.hexdigest(),
+            bytes_read=bytes_read,
+            collector_wall_ms=wall_ms,
+            collector_cpu_ms=cpu_ms,
+            source_capability="USAGE_SOURCE_UNSTABLE" if malformed else "USAGE_SOURCE_UNAVAILABLE",
+        )
+    fields = (
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    )
+    usage: dict[str, int | None] = {"model_requests": len(turn_usages)}
+    quality = "EXACT"
+    for field in fields:
+        values: list[int] = []
+        for raw_usage in turn_usages:
+            value = raw_usage.get(field)
+            if field == "reasoning_output_tokens" and value is None:
+                value = raw_usage.get("reasoning_tokens")
+            if value is None:
+                if field != "cache_write_input_tokens":
+                    quality = "PARTIAL"
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                return _unknown_usage_observation(
+                    source_digest=digest.hexdigest(),
+                    bytes_read=bytes_read,
+                    collector_wall_ms=wall_ms,
+                    collector_cpu_ms=cpu_ms,
+                    source_capability="USAGE_SOURCE_UNSTABLE",
+                )
+            values.append(value)
+        usage[field] = sum(values) if len(values) == len(turn_usages) else None
+    usage["reasoning_tokens"] = usage["reasoning_output_tokens"]
     return UsageObservation(
         source_digest=digest.hexdigest(),
         bytes_read=bytes_read,
         collector_wall_ms=wall_ms,
         collector_cpu_ms=cpu_ms,
-        session_id=session_id,
+        session_id=thread_id,
         thread_id=thread_id,
-        usage=observed_usage,
-        observed_event_count=event_count,
-        model=model,
-        reasoning_effort=reasoning_effort,
+        usage=usage,
+        observed_event_count=len(turn_usages),
+        usage_source="CODEX_EXEC_JSON",
+        usage_quality=quality,
+        source_capability="USAGE_SOURCE_SUPPORTED",
     )
+
+
+def parse_session_usage(path: Path | str) -> UsageObservation:
+    """Reject the retired transcript adapter without touching the path."""
+
+    raise SessionParseError("transcript parsing is disabled; use codex exec --json or explicit launcher metadata")
 
 
 def ingest_usage(
@@ -597,18 +695,24 @@ def ingest_usage(
     run_id: str,
     observation: UsageObservation,
     *,
-    source_kind: str = "CODEX_ROLLOUT_JSONL",
-    source_schema: str = "codex_rollout_jsonl",
+    source_kind: str | None = None,
+    source_schema: str | None = None,
     attribution_role: str = "ROOT",
     worker_id: str | None = None,
 ) -> dict[str, Any]:
     store.run_records(run_id)
+    usage_source = _enum(observation.usage_source, USAGE_SOURCES, field="usage_source")
+    usage_quality = _enum(observation.usage_quality, USAGE_QUALITY, field="usage_quality")
+    source_capability = _enum(observation.source_capability, USAGE_SOURCE_CAPABILITIES, field="source_capability")
     record = _record(
         "usage_observed",
         run_id=run_id,
-        source_kind=_label(source_kind, field="source_kind", required=True),
-        source_schema=_label(source_schema, field="source_schema", required=True),
+        source_kind=_label(source_kind or usage_source, field="source_kind", required=True),
+        source_schema=_label(source_schema or usage_source.lower(), field="source_schema", required=True),
         source_digest=observation.source_digest,
+        source_capability=source_capability,
+        usage_source=usage_source,
+        usage_quality=usage_quality,
         session_id=_label(observation.session_id, field="session_id"),
         thread_id=_label(observation.thread_id, field="thread_id"),
         attribution_role=_enum(attribution_role, {"ROOT", "WORKER", "UNKNOWN"}, field="attribution_role"),
@@ -635,6 +739,9 @@ def ingest_synthetic_usage(store: TelemetryStore, run_id: str, values: dict[str,
         source_kind="SYNTHETIC_FIXTURE",
         source_schema="synthetic_usage_v1",
         source_digest=hashlib.sha256((run_id + ":" + json.dumps(usage, sort_keys=True)).encode("utf-8")).hexdigest(),
+        source_capability="USAGE_SOURCE_SUPPORTED",
+        usage_source="NONE",
+        usage_quality="EXACT",
         session_id=None,
         thread_id=None,
         attribution_role="UNKNOWN",
@@ -644,6 +751,83 @@ def ingest_synthetic_usage(store: TelemetryStore, run_id: str, values: dict[str,
         measurement=_measurement(collector_wall_ms=0.0, collector_cpu_ms=0.0, bytes_read=0),
     )
     return store.append(record, unique_source_digest=True)
+
+
+def _metadata_usage_observation(values: dict[str, Any], *, source: str, session_id: str | None = None, thread_id: str | None = None, attribution_role: str = "ROOT", worker_id: str | None = None) -> UsageObservation:
+    usage = _usage(values)
+    numeric_fields = (
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    )
+    known = sum(usage[field] is not None for field in numeric_fields)
+    quality = "EXACT" if known == len(numeric_fields) else ("PARTIAL" if known else "UNKNOWN")
+    payload = json.dumps({"source": source, "session_id": session_id, "thread_id": thread_id, "attribution_role": attribution_role, "worker_id": worker_id, "usage": usage}, sort_keys=True).encode("utf-8")
+    return UsageObservation(
+        source_digest=hashlib.sha256(payload).hexdigest(),
+        bytes_read=0,
+        collector_wall_ms=0.0,
+        collector_cpu_ms=0.0,
+        session_id=session_id,
+        thread_id=thread_id,
+        usage=usage,
+        observed_event_count=usage["model_requests"] or 0,
+        usage_source=source,
+        usage_quality=quality,
+        source_capability="USAGE_SOURCE_SUPPORTED",
+    )
+
+
+def ingest_launcher_usage(
+    store: TelemetryStore,
+    run_id: str,
+    values: dict[str, Any],
+    *,
+    session_id: str | None = None,
+    thread_id: str | None = None,
+    attribution_role: str = "ROOT",
+    worker_id: str | None = None,
+) -> dict[str, Any]:
+    """Ingest usage explicitly supplied by the canonical launcher."""
+
+    observation = _metadata_usage_observation(
+        values,
+        source="ORCHESTRA_LAUNCHER",
+        session_id=session_id,
+        thread_id=thread_id,
+        attribution_role=attribution_role,
+        worker_id=worker_id,
+    )
+    return ingest_usage(
+        store,
+        run_id,
+        observation,
+        attribution_role=attribution_role,
+        worker_id=worker_id,
+    )
+
+
+def ingest_codex_exec_json(
+    store: TelemetryStore,
+    run_id: str,
+    path: Path | str,
+    *,
+    expected_thread_id: str,
+    attribution_role: str = "ROOT",
+    worker_id: str | None = None,
+) -> dict[str, Any]:
+    """Ingest an explicitly supplied, exactly correlated exec JSONL stream."""
+
+    observation = parse_codex_exec_json(path, expected_thread_id=expected_thread_id)
+    return ingest_usage(
+        store,
+        run_id,
+        observation,
+        attribution_role=attribution_role,
+        worker_id=worker_id,
+    )
 
 
 def _aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, int | None]:
@@ -664,7 +848,31 @@ def _aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, int | None]
     ):
         values = [usage.get(field) for usage in usages]
         result[field] = sum(values) if all(isinstance(value, int) and not isinstance(value, bool) for value in values) else None
+    result["reasoning_tokens"] = result["reasoning_output_tokens"]
     return result
+
+
+def _fold_usage_source(records: Iterable[dict[str, Any]]) -> str:
+    sources = {
+        record.get("usage_source")
+        for record in records
+        if record.get("record_type") == "usage_observed" and record.get("usage_source") in USAGE_SOURCES
+    }
+    if not sources:
+        return "NONE"
+    non_none = sources - {"NONE"}
+    return next(iter(non_none)) if len(non_none) == 1 else (next(iter(sources)) if len(sources) == 1 else "NONE")
+
+
+def _fold_usage_quality(records: Iterable[dict[str, Any]]) -> str:
+    qualities = {
+        record.get("usage_quality")
+        for record in records
+        if record.get("record_type") == "usage_observed" and record.get("usage_quality") in USAGE_QUALITY
+    }
+    if not qualities or "UNKNOWN" in qualities:
+        return "UNKNOWN"
+    return "PARTIAL" if "PARTIAL" in qualities else "EXACT"
 
 
 def observe_metadata(
@@ -674,6 +882,7 @@ def observe_metadata(
     source_kind: str,
     root_model: str | None = None,
     root_reasoning_effort: str | None = None,
+    reasoning_effort_source: str = "NONE",
     profile: str | None = None,
     orchestra_mode: str | None = None,
     project_kind: str | None = None,
@@ -687,6 +896,7 @@ def observe_metadata(
         source_kind=_label(source_kind, field="source_kind", required=True),
         root_model=_model_label(root_model, field="root_model"),
         root_reasoning_effort=_label(root_reasoning_effort, field="root_reasoning_effort"),
+        reasoning_effort_source=_enum(reasoning_effort_source, REASONING_EFFORT_SOURCES, field="reasoning_effort_source"),
         profile=_label(profile, field="profile"),
         orchestra_mode=_enum(orchestra_mode, MODES, field="orchestra_mode") if orchestra_mode else None,
         project_kind=_enum(project_kind, PROJECT_KINDS, field="project_kind") if project_kind else None,
@@ -703,6 +913,7 @@ def observe_worker(
     agent_type: str | None = None,
     model: str | None = None,
     reasoning_effort: str | None = None,
+    reasoning_effort_source: str = "NONE",
     launch_status: str = "UNKNOWN",
     measurement_quality: str = "EXACT_MACHINE_READABLE",
 ) -> dict[str, Any]:
@@ -714,6 +925,7 @@ def observe_worker(
         agent_type=_label(agent_type, field="agent_type"),
         model=_model_label(model, field="worker.model"),
         reasoning_effort=_label(reasoning_effort, field="worker.reasoning_effort"),
+        reasoning_effort_source=_enum(reasoning_effort_source, REASONING_EFFORT_SOURCES, field="worker.reasoning_effort_source"),
         launch_status=_enum(launch_status, {"LAUNCHED", "COMPLETED", "CANCELLED", "FAILED", "UNKNOWN"}, field="worker.launch_status"),
         measurement_quality=_label(measurement_quality, field="measurement_quality", required=True),
     ))
@@ -742,7 +954,7 @@ def _project_metadata(cwd: str | None) -> tuple[str, str | None]:
     """Derive a path-free project label without invoking a shell or Git."""
 
     if not isinstance(cwd, str) or not cwd:
-        return "UNKNOWN", None
+        return "NO_PROJECT", None
     try:
         candidate = Path(cwd).expanduser().resolve()
     except (OSError, RuntimeError):
@@ -752,7 +964,7 @@ def _project_metadata(cwd: str | None) -> tuple[str, str | None]:
     for directory in (candidate, *candidate.parents):
         if (directory / ".git").exists():
             return "GIT", _derived_label(directory.name, fallback="git-project")
-    return "NO_PROJECT", None
+    return "NON_GIT", None
 
 
 def _hook_run_candidates(store: TelemetryStore, session_id: str) -> list[tuple[str, bool]]:
@@ -787,6 +999,7 @@ def _ensure_automatic_run(store: TelemetryStore, event: dict[str, Any]) -> str:
     if event.get("hook_event_name") == "SessionEnd" and candidates:
         return candidates[-1][0]
     project_kind, project_label = _project_metadata(event.get("cwd"))
+    launcher = _launcher_metadata(event)
     base = _derived_label(f"auto_{session_id}", fallback="auto-session")
     run_id = base if not candidates else f"{base}_{len(candidates) + 1}"
     try:
@@ -799,7 +1012,10 @@ def _ensure_automatic_run(store: TelemetryStore, event: dict[str, Any]) -> str:
             project_kind=project_kind,
             measurement_scope="UNCLASSIFIED",
             root_model=_model_label(event.get("model"), field="hook.model"),
-            mode="UNKNOWN",
+            root_reasoning_effort=launcher.get("reasoning_effort"),
+            profile=launcher.get("profile"),
+            reasoning_effort_source=launcher.get("reasoning_effort_source"),
+            mode=launcher.get("mode", "NOT_APPLICABLE"),
         )
     except DuplicateRecordError:
         # Two lifecycle events for the same session can arrive concurrently.
@@ -811,44 +1027,60 @@ def _ensure_automatic_run(store: TelemetryStore, event: dict[str, Any]) -> str:
     return run_id
 
 
-def _event_path(event: dict[str, Any], field: str) -> Path | None:
-    value = event.get(field)
-    if not isinstance(value, str) or not value:
-        return None
-    return Path(value).expanduser()
+def _launcher_metadata(event: dict[str, Any]) -> dict[str, Any]:
+    """Read only explicit metadata emitted by the canonical launcher.
+
+    Ordinary Codex hooks do not provide profile, mode, effort, or usage.  The
+    reserved object is an opt-in launcher contract; arbitrary hook fields and
+    model names never imply those dimensions.
+    """
+
+    raw = event.get("orchestra_launcher")
+    if not isinstance(raw, dict):
+        return {}
+    result: dict[str, Any] = {}
+    if isinstance(raw.get("profile"), str):
+        result["profile"] = raw["profile"]
+    if isinstance(raw.get("mode"), str):
+        result["mode"] = raw["mode"]
+    if isinstance(raw.get("reasoning_effort"), str):
+        result["reasoning_effort"] = raw["reasoning_effort"]
+        result["reasoning_effort_source"] = "LAUNCHER"
+    if isinstance(raw.get("usage"), dict):
+        result["usage"] = raw["usage"]
+    return result
 
 
-def _observe_rollout(
+def _observe_launcher_usage(
     store: TelemetryStore,
     run_id: str,
-    path: Path | None,
+    event: dict[str, Any],
+    launcher: dict[str, Any],
     *,
     attribution_role: str,
     worker_id: str | None = None,
-    expected_session_id: str | None = None,
-) -> UsageObservation | None:
-    if path is None:
-        return None
-    observation = parse_session_usage(path)
-    if expected_session_id and observation.session_id != expected_session_id:
-        raise SessionParseError("hook transcript session_id does not match lifecycle session_id")
+) -> bool:
+    values = launcher.get("usage")
+    if not isinstance(values, dict):
+        return False
     try:
-        ingest_usage(
+        ingest_launcher_usage(
             store,
             run_id,
-            observation,
-            source_kind="CODEX_HOOK_EVENT",
+            values,
+            session_id=event.get("session_id"),
+            thread_id=event.get("thread_id"),
             attribution_role=attribution_role,
             worker_id=worker_id,
         )
     except DuplicateRecordError as exc:
         if "source has already been ingested" not in str(exc):
             raise
-    return observation
+    return True
 
 
 def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str, Any]:
-    """Handle one Codex lifecycle hook event without emitting hook output."""
+    """Handle one Codex lifecycle hook event without reading transcript paths."""
 
     if not telemetry_enabled():
         return {"status": "DISABLED"}
@@ -858,16 +1090,23 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
     session_id = event.get("session_id")
     if not isinstance(event_name, str) or not isinstance(session_id, str):
         raise TelemetryError("hook input lacks event name or session_id")
+    launcher = _launcher_metadata(event)
     run_id = _ensure_automatic_run(store, event)
     if event_name == "SessionStart":
+        project_kind, project_label = _project_metadata(event.get("cwd"))
         observe_metadata(
             store,
             run_id,
             source_kind="CODEX_HOOK_EVENT",
             root_model=_model_label(event.get("model"), field="hook.model"),
-            project_kind=_project_metadata(event.get("cwd"))[0],
-            project_label=_project_metadata(event.get("cwd"))[1],
+            root_reasoning_effort=launcher.get("reasoning_effort"),
+            reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
+            profile=launcher.get("profile"),
+            orchestra_mode=launcher.get("mode"),
+            project_kind=project_kind,
+            project_label=project_label,
         )
+        usage_observed = _observe_launcher_usage(store, run_id, event, launcher, attribution_role="ROOT")
         return {"status": "STARTED", "run_id": run_id}
     if event_name == "SubagentStart":
         worker_id = event.get("agent_id") or _derived_label(event.get("agent_type"), fallback="unknown-worker")
@@ -877,28 +1116,38 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
             worker_id=_derived_label(worker_id, fallback="unknown-worker"),
             agent_type=_derived_label(event.get("agent_type"), fallback="unknown") if event.get("agent_type") else None,
             model=_model_label(event.get("model"), field="hook.model"),
+            reasoning_effort=launcher.get("reasoning_effort"),
+            reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
             launch_status="LAUNCHED",
+        )
+        _observe_launcher_usage(
+            store,
+            run_id,
+            event,
+            launcher,
+            attribution_role="WORKER",
+            worker_id=worker_id,
         )
         return {"status": "WORKER_STARTED", "run_id": run_id}
     if event_name == "SubagentStop":
-        path = _event_path(event, "agent_transcript_path")
-        observation = _observe_rollout(
+        worker_id = event.get("agent_id") or _derived_label(event.get("agent_type"), fallback="unknown-worker")
+        usage_observed = _observe_launcher_usage(
             store,
             run_id,
-            path,
+            event,
+            launcher,
             attribution_role="WORKER",
-            worker_id=event.get("agent_id"),
-            expected_session_id=session_id,
+            worker_id=worker_id,
         )
-        worker_id = event.get("agent_id") or (observation.thread_id if observation else None) or "unknown-worker"
         observe_worker(
             store,
             run_id,
             worker_id=_derived_label(worker_id, fallback="unknown-worker"),
             agent_type=_derived_label(event.get("agent_type"), fallback="unknown") if event.get("agent_type") else None,
-            model=_model_label(observation.model if observation else event.get("model"), field="hook.model"),
-            reasoning_effort=observation.reasoning_effort if observation else None,
-            launch_status="COMPLETED" if observation else "UNKNOWN",
+            model=_model_label(event.get("model"), field="hook.model"),
+            reasoning_effort=launcher.get("reasoning_effort"),
+            reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
+            launch_status="COMPLETED",
         )
         return {"status": "WORKER_STOPPED", "run_id": run_id}
     if event_name == "Interrupt":
@@ -922,15 +1171,20 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
                     for record in existing_records
                 ),
             }
-        path = _event_path(event, "transcript_path")
-        observation = _observe_rollout(store, run_id, path, attribution_role="ROOT", expected_session_id=session_id)
+        project_kind, project_label = _project_metadata(event.get("cwd"))
         observe_metadata(
             store,
             run_id,
             source_kind="CODEX_HOOK_EVENT",
-            root_model=_model_label(observation.model if observation else event.get("model"), field="hook.model"),
-            root_reasoning_effort=observation.reasoning_effort if observation else None,
+            root_model=_model_label(event.get("model"), field="hook.model"),
+            root_reasoning_effort=launcher.get("reasoning_effort"),
+            reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
+            profile=launcher.get("profile"),
+            orchestra_mode=launcher.get("mode"),
+            project_kind=project_kind,
+            project_label=project_label,
         )
+        usage_observed = _observe_launcher_usage(store, run_id, event, launcher, attribution_role="ROOT")
         records = store.run_records(run_id)
         usage = _aggregate_usage(record for record in records if record.get("record_type") == "usage_observed")
         interruptions = [record for record in records if record.get("record_type") == "interruption_observed"]
@@ -939,16 +1193,22 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
                 store,
                 run_id,
                 usage=usage,
+                usage_source=_fold_usage_source(records),
+                usage_quality=_fold_usage_quality(records),
                 execution={"session_count": 1, "abnormal_termination": "INTERRUPTED" if interruptions else None},
                 result={"completed": False if interruptions else True},
             )
         except DuplicateRecordError:
             pass
-        return {"status": "FINALIZED", "run_id": run_id, "usage_observed": observation is not None}
+        usage_observed = usage_observed or any(
+            record.get("record_type") == "usage_observed" and record.get("attribution_role") == "ROOT"
+            for record in records
+        )
+        return {"status": "FINALIZED", "run_id": run_id, "usage_observed": usage_observed}
     return {"status": "IGNORED", "run_id": run_id, "event": event_name}
 
 
-def finalize_run(store: TelemetryStore, run_id: str, *, ended_at_utc: str | None = None, usage: dict[str, Any] | None = None, execution: dict[str, Any] | None = None, result: dict[str, Any] | None = None, measurement: dict[str, Any] | None = None) -> dict[str, Any]:
+def finalize_run(store: TelemetryStore, run_id: str, *, ended_at_utc: str | None = None, usage: dict[str, Any] | None = None, usage_source: str | None = None, usage_quality: str | None = None, execution: dict[str, Any] | None = None, result: dict[str, Any] | None = None, measurement: dict[str, Any] | None = None) -> dict[str, Any]:
     records = store.run_records(run_id)
     if any(r.get("record_type") == "run_finalize" for r in records):
         raise DuplicateRecordError(f"run already finalized: {run_id}")
@@ -961,12 +1221,27 @@ def finalize_run(store: TelemetryStore, run_id: str, *, ended_at_utc: str | None
     final_usage = _usage(usage) if usage is not None else _aggregate_usage(
         record for record in records if record.get("record_type") == "usage_observed"
     )
+    final_usage_source = _enum(usage_source or _fold_usage_source(records), USAGE_SOURCES, field="usage_source")
+    final_usage_quality = _enum(usage_quality or _fold_usage_quality(records), USAGE_QUALITY, field="usage_quality")
+    start = next(record for record in records if record.get("record_type") == "run_start")
+    final_effort_source = start.get("reasoning_effort_source", "NONE")
+    final_ended_at = ended_at_utc or _utc_now()
+    if final_execution.get("wall_clock_seconds") is None:
+        try:
+            started = datetime.fromisoformat(str(start["started_at_utc"]).replace("Z", "+00:00"))
+            ended = datetime.fromisoformat(final_ended_at.replace("Z", "+00:00"))
+            final_execution["wall_clock_seconds"] = max(0.0, (ended - started).total_seconds())
+        except (KeyError, TypeError, ValueError):
+            pass
     final_measurement = measurement or _measurement(collector_wall_ms=0.0, collector_cpu_ms=0.0)
     record = _record(
         "run_finalize",
         run_id=_label(run_id, field="run_id", required=True),
-        ended_at_utc=ended_at_utc or _utc_now(),
+        ended_at_utc=final_ended_at,
         usage=final_usage,
+        usage_source=final_usage_source,
+        usage_quality=final_usage_quality,
+        reasoning_effort_source=_enum(final_effort_source, REASONING_EFFORT_SOURCES, field="reasoning_effort_source"),
         execution=final_execution,
         result=final_result,
         measurement=final_measurement,
@@ -1043,6 +1318,11 @@ def _median(values: Iterable[Any]) -> float | None:
     return statistics.median(known) if known else None
 
 
+def _median_with_count(values: Iterable[Any]) -> tuple[float | None, int]:
+    known = [float(v) for v in values if isinstance(v, (int, float)) and not isinstance(v, bool)]
+    return (statistics.median(known) if known else None, len(known))
+
+
 def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     start = next(r for r in records if r["record_type"] == "run_start")
     run = json.loads(json.dumps(start))
@@ -1055,12 +1335,16 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
         if kind == "usage_observed":
             usage_records.append(record)
             run["usage"] = _aggregate_usage(usage_records)
+            run["usage_source"] = _fold_usage_source(usage_records)
+            run["usage_quality"] = _fold_usage_quality(usage_records)
             run["measurement"] = record["measurement"]
         elif kind == "metadata_observed":
             if record.get("root_model") is not None:
                 run["orchestra"]["root"]["model"] = record["root_model"]
             if record.get("root_reasoning_effort") is not None:
                 run["orchestra"]["root"]["reasoning_effort"] = record["root_reasoning_effort"]
+            if record.get("reasoning_effort_source") is not None:
+                run["reasoning_effort_source"] = record["reasoning_effort_source"]
             if record.get("profile") is not None:
                 run["orchestra"]["root"]["profile"] = record["profile"]
             if record.get("orchestra_mode") is not None:
@@ -1075,6 +1359,7 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "agent_type": record.get("agent_type"),
                 "model": record.get("model"),
                 "reasoning_effort": record.get("reasoning_effort"),
+                "reasoning_effort_source": record.get("reasoning_effort_source", "NONE"),
                 "launch_status": record.get("launch_status", "UNKNOWN"),
             }
         elif kind == "interruption_observed":
@@ -1082,6 +1367,9 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
         elif kind == "run_finalize":
             run["ended_at_utc"] = record["ended_at_utc"]
             run["usage"] = record["usage"]
+            run["usage_source"] = record.get("usage_source", "NONE")
+            run["usage_quality"] = record.get("usage_quality", "UNKNOWN")
+            run["reasoning_effort_source"] = record.get("reasoning_effort_source", run.get("reasoning_effort_source", "NONE"))
             run["execution"] = record["execution"]
             run["result"] = record["result"]
             run["measurement"] = record["measurement"]
@@ -1092,6 +1380,11 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     if workers:
         run["orchestra"]["workers"] = list(workers.values())
         run["orchestra"]["actual_worker_count"] = len(workers)
+        worker_statuses = [record.get("launch_status", "UNKNOWN") for record in records if record.get("record_type") == "worker_observed"]
+        run["orchestra"]["workers_started"] = worker_statuses.count("LAUNCHED")
+        run["orchestra"]["workers_completed"] = worker_statuses.count("COMPLETED")
+        run["orchestra"]["workers_cancelled"] = worker_statuses.count("CANCELLED")
+        run["orchestra"]["workers_failed"] = worker_statuses.count("FAILED")
         run["orchestra"]["attribution_quality"] = "ROOT_WORKER_USAGE_PARTIAL"
         run["orchestra"]["attribution_source"] = "CODEX_LIFECYCLE_HOOKS"
     elif any(record.get("source_kind") == "CODEX_HOOK_EVENT" for record in records):
@@ -1154,6 +1447,8 @@ def report(store: TelemetryStore, *, group_by: list[str] | None = None, include_
             "root_model": run["orchestra"]["root"]["model"] or "UNKNOWN",
             "reasoning_effort": run["orchestra"]["root"]["reasoning_effort"] or "UNKNOWN",
             "worker_count": run["orchestra"]["actual_worker_count"],
+            "usage_source": run.get("usage_source", "NONE"),
+            "usage_quality": run.get("usage_quality", "UNKNOWN"),
         }
         unknown = set(fields) - set(mapping)
         if unknown:
@@ -1172,6 +1467,11 @@ def report(store: TelemetryStore, *, group_by: list[str] | None = None, include_
         total_allowance = [r["economics"]["weekly_pp_consumed"] for r in members if r["economics"]["weekly_pp_consumed"] is not None]
         accepted = sum(1 for r in members if r["result"]["reviewer_verdict"] == "PASS")
         allowance_sum = sum(total_allowance) if total_allowance else None
+        median_input, input_n = _median_with_count(r["usage"]["input_tokens"] for r in members)
+        median_cached, cached_n = _median_with_count(r["usage"]["cached_input_tokens"] for r in members)
+        median_output, output_n = _median_with_count(r["usage"]["output_tokens"] for r in members)
+        median_total, total_n = _median_with_count(r["usage"]["total_tokens"] for r in members)
+        usage_quality_counts = {quality: sum(r.get("usage_quality") == quality for r in members) for quality in sorted(USAGE_QUALITY)}
         summaries.append({
             "group": dict(zip(fields, key)),
             "runs": len(members),
@@ -1179,10 +1479,17 @@ def report(store: TelemetryStore, *, group_by: list[str] | None = None, include_
             "first_pass_pass_rate": (sum(value == "PASS" for value in first_pass) / len(first_pass)) if first_pass else None,
             "rework_rate": (sum(rework) / len(rework)) if rework else None,
             "median_wall_time_seconds": _median(r["execution"]["wall_clock_seconds"] for r in members),
-            "median_input_tokens": _median(r["usage"]["input_tokens"] for r in members),
-            "median_cached_input_tokens": _median(r["usage"]["cached_input_tokens"] for r in members),
-            "median_output_tokens": _median(r["usage"]["output_tokens"] for r in members),
-            "median_total_tokens": _median(r["usage"]["total_tokens"] for r in members),
+            "median_input_tokens": median_input,
+            "median_input_tokens_n": input_n,
+            "median_cached_input_tokens": median_cached,
+            "median_cached_input_tokens_n": cached_n,
+            "median_output_tokens": median_output,
+            "median_output_tokens_n": output_n,
+            "median_total_tokens": median_total,
+            "median_total_tokens_n": total_n,
+            "usage_total_runs": len(members),
+            "usage_qualified_runs": total_n,
+            "usage_quality_counts": usage_quality_counts,
             "median_weekly_allowance_pp_consumed": _median(total_allowance),
             "median_five_hour_allowance_pp_consumed": _median(r["economics"]["five_hour_pp_consumed"] for r in members),
             "accepted_runs_per_weekly_allowance_pp": (accepted / allowance_sum) if allowance_sum and allowance_sum > 0 else None,
@@ -1219,23 +1526,27 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--mode", choices=sorted(MODES), default="UNKNOWN")
     create.add_argument("--root-model")
     create.add_argument("--root-reasoning-effort")
+    create.add_argument("--profile")
+    create.add_argument("--reasoning-effort-source", choices=sorted(REASONING_EFFORT_SOURCES))
     create.add_argument("--requested-worker-count", type=int)
     create.add_argument("--actual-worker-count", type=int)
     create.add_argument("--max-concurrency", type=int)
     create.add_argument("--worker", action="append", default=[], metavar="MODEL:EFFORT:STATUS")
 
-    ingest = sub.add_parser("ingest")
+    ingest = sub.add_parser("ingest-exec-json")
     ingest.add_argument("--run-id", required=True)
-    ingest.add_argument("--session-file", required=True)
+    ingest.add_argument("--source-file", required=True)
+    ingest.add_argument("--thread-id", required=True)
     sub.add_parser("hook", help="consume one Codex lifecycle hook JSON object from stdin")
     synthetic = sub.add_parser("ingest-synthetic")
     synthetic.add_argument("--run-id", required=True)
-    for name in ("model-requests", "input-tokens", "cached-input-tokens", "cache-write-input-tokens", "output-tokens", "reasoning-output-tokens", "total-tokens"):
+    for name in ("model-requests", "input-tokens", "cached-input-tokens", "cache-write-input-tokens", "output-tokens", "reasoning-tokens", "reasoning-output-tokens", "total-tokens"):
         synthetic.add_argument("--" + name, type=int)
 
     finalize = sub.add_parser("finalize")
     finalize.add_argument("--run-id", required=True)
-    finalize.add_argument("--session-file")
+    finalize.add_argument("--exec-json-file")
+    finalize.add_argument("--exec-thread-id")
     finalize.add_argument("--completed", type=lambda value: value.lower() in {"1", "true", "yes"})
     finalize.add_argument("--validation-status", choices=["PASS", "FAIL", "UNKNOWN"], default="UNKNOWN")
     finalize.add_argument("--tests-passed", type=int)
@@ -1279,7 +1590,7 @@ def _parser() -> argparse.ArgumentParser:
         manual.add_argument("--" + name, type=float)
 
     summary = sub.add_parser("report")
-    summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "root_model", "reasoning_effort", "worker_count"])
+    summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "root_model", "reasoning_effort", "worker_count", "usage_source", "usage_quality"])
     summary.add_argument("--include-synthetic", action="store_true")
     return parser
 
@@ -1304,15 +1615,17 @@ def main(argv: list[str] | None = None) -> int:
                 if len(parts) != 3:
                     raise TelemetryError("--worker must be MODEL:EFFORT:STATUS")
                 workers.append({"model": parts[0], "reasoning_effort": parts[1], "launch_status": parts[2]})
-            result = create_run(store, task_label=args.task_label, task_id=args.task_id, project_label=args.project_label, task_class=args.task_class, complexity=args.complexity, mode=args.mode, root_model=args.root_model, root_reasoning_effort=args.root_reasoning_effort, requested_worker_count=args.requested_worker_count, actual_worker_count=args.actual_worker_count, workers=workers, max_concurrency=args.max_concurrency, run_id=args.run_id)
-        elif args.command == "ingest":
-            result = ingest_usage(store, args.run_id, parse_session_usage(args.session_file))
+            result = create_run(store, task_label=args.task_label, task_id=args.task_id, project_label=args.project_label, task_class=args.task_class, complexity=args.complexity, mode=args.mode, root_model=args.root_model, root_reasoning_effort=args.root_reasoning_effort, profile=args.profile, reasoning_effort_source=args.reasoning_effort_source, requested_worker_count=args.requested_worker_count, actual_worker_count=args.actual_worker_count, workers=workers, max_concurrency=args.max_concurrency, run_id=args.run_id)
+        elif args.command == "ingest-exec-json":
+            result = ingest_codex_exec_json(store, args.run_id, args.source_file, expected_thread_id=args.thread_id)
         elif args.command == "ingest-synthetic":
-            result = ingest_synthetic_usage(store, args.run_id, {"model_requests": args.model_requests, "input_tokens": args.input_tokens, "cached_input_tokens": args.cached_input_tokens, "cache_write_input_tokens": args.cache_write_input_tokens, "output_tokens": args.output_tokens, "reasoning_output_tokens": args.reasoning_output_tokens, "total_tokens": args.total_tokens})
+            result = ingest_synthetic_usage(store, args.run_id, {"model_requests": args.model_requests, "input_tokens": args.input_tokens, "cached_input_tokens": args.cached_input_tokens, "cache_write_input_tokens": args.cache_write_input_tokens, "output_tokens": args.output_tokens, "reasoning_tokens": args.reasoning_tokens, "reasoning_output_tokens": args.reasoning_output_tokens, "total_tokens": args.total_tokens})
         elif args.command == "finalize":
             observation = None
-            if args.session_file:
-                observation = parse_session_usage(args.session_file)
+            if args.exec_json_file:
+                if not args.exec_thread_id:
+                    raise TelemetryError("--exec-thread-id is required with --exec-json-file")
+                observation = parse_codex_exec_json(args.exec_json_file, expected_thread_id=args.exec_thread_id)
                 try:
                     ingest_usage(store, args.run_id, observation)
                 except DuplicateRecordError as exc:
@@ -1325,7 +1638,7 @@ def main(argv: list[str] | None = None) -> int:
             execution = {"wall_clock_seconds": args.wall_clock_seconds, "process_exit_status": args.process_exit_status, "retries": args.retries, "context_compactions": args.context_compactions, "tool_call_count": args.tool_call_count}
             result_fields = {"completed": args.completed, "local_validation_status": args.validation_status, "tests_passed": args.tests_passed, "tests_failed": args.tests_failed, "files_changed": args.files_changed, "commits_produced": args.commits_produced, "worktree_clean": args.worktree_clean}
             measurement = _measurement(collector_wall_ms=(observation.collector_wall_ms if observation else 0.0), collector_cpu_ms=(observation.collector_cpu_ms if observation else 0.0), bytes_read=(observation.bytes_read if observation else 0))
-            result = finalize_run(store, args.run_id, usage=latest_usage, execution=execution, result=result_fields, measurement=measurement)
+            result = finalize_run(store, args.run_id, usage=latest_usage, usage_source=(observation.usage_source if observation else None), usage_quality=(observation.usage_quality if observation else None), execution=execution, result=result_fields, measurement=measurement)
         elif args.command == "snapshot":
             result = add_snapshot(store, args.run_id, source=args.source, snapshot_kind=args.snapshot_kind, five_hour_allowance_pp=args.five_hour_allowance_pp, weekly_allowance_pp=args.weekly_allowance_pp, credit_balance=args.credit_balance, measurement_quality=args.measurement_quality)
         elif args.command == "annotate":
