@@ -39,6 +39,8 @@ _SOURCE_DESTINATIONS = (
     ("skills/luna-orchestra/SKILL.md", "skills/luna-orchestra/SKILL.md", "text"),
     ("skills/orchestrate/SKILL.md", "skills/orchestrate/SKILL.md", "text"),
     ("config/global-astra.config.toml", "global-astra.config.toml", "profile"),
+    ("config/global-astra-low.config.toml", "global-astra-low.config.toml", "profile"),
+    ("config/global-astra-medium.config.toml", "global-astra-medium.config.toml", "profile"),
     ("config/global-luna.config.toml", "global-luna.config.toml", "profile"),
     ("config/agents/default.toml", "agents/default.toml", "role"),
     ("config/agents/worker.toml", "agents/worker.toml", "role"),
@@ -52,10 +54,14 @@ _ROLE_MODELS = {
 }
 _PROFILE_MODELS = {
     "global-astra.config.toml": ASTRA_MODEL,
+    "global-astra-low.config.toml": ASTRA_MODEL,
+    "global-astra-medium.config.toml": ASTRA_MODEL,
     "global-luna.config.toml": LUNA_MODEL,
 }
 _PROFILE_REASONING = {
     "global-astra.config.toml": "medium",
+    "global-astra-low.config.toml": "low",
+    "global-astra-medium.config.toml": "medium",
     "global-luna.config.toml": LUNA_REASONING,
 }
 _MANAGED_CONFIG_PATHS = {

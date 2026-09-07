@@ -35,6 +35,16 @@ class GlobalPolicyTests(unittest.TestCase):
                 'model = "gpt-6-astra"\n'
                 'model_reasoning_effort = "medium"\n'
             ),
+            "config/global-astra-low.config.toml": (
+                'developer_instructions = "ASTRA_ROOT MANUAL_EXPERIMENTAL EXPLICIT_USER_OPT_IN CODEX_ORCHESTRA_GLOBAL_POLICY_V1 low"\n'
+                'model = "gpt-6-astra"\n'
+                'model_reasoning_effort = "low"\n'
+            ),
+            "config/global-astra-medium.config.toml": (
+                'developer_instructions = "ASTRA_ROOT MANUAL_EXPERIMENTAL EXPLICIT_USER_OPT_IN CODEX_ORCHESTRA_GLOBAL_POLICY_V1 medium"\n'
+                'model = "gpt-6-astra"\n'
+                'model_reasoning_effort = "medium"\n'
+            ),
             "config/global-luna.config.toml": (
                 'developer_instructions = "LUNA_ROOT CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
                 'model = "gpt-5.6-luna"\n'
@@ -154,6 +164,19 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertEqual(report["model_reasoning_effort"], "xhigh")
         self.assertEqual(report["default_subagent_model"], "gpt-5.6-luna")
         self.assertEqual(report["default_subagent_reasoning_effort"], "xhigh")
+
+    def test_astra_effort_profiles_are_installed_and_validated(self) -> None:
+        self._write_config()
+        global_policy.install(self.home, source_root=self.source)
+        for name, effort in (("global-astra-low.config.toml", "low"), ("global-astra-medium.config.toml", "medium"), ("global-astra.config.toml", "medium")):
+            profile = global_policy._toml_bytes(self.home / name)
+            self.assertEqual(profile["model"], "gpt-6-astra")
+            self.assertEqual(profile["model_reasoning_effort"], effort)
+            instructions = profile["developer_instructions"]
+            self.assertIn("MANUAL_EXPERIMENTAL", instructions)
+            self.assertIn("EXPLICIT_USER_OPT_IN", instructions)
+        report = global_policy.verify(self.home, source_root=self.source)
+        self.assertEqual(report["verdict"], "PASS")
 
     def test_second_install_is_idempotent_without_a_new_backup(self) -> None:
         self._write_config(

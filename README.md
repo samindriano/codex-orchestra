@@ -1,8 +1,8 @@
 # Codex Orchestra
 
 A versioned, offline-installable global foundation: GPT-5.6 Luna XHigh is the
-normal global root and worker tier. Astra Medium remains a manual experimental
-profile requiring explicit user opt-in. Optimize useful verified work per
+normal global root and worker tier. Astra remains a manual experimental profile;
+the user selects its reasoning effort explicitly. Optimize useful verified work per
 constrained resource, subject to correctness and user intent.
 
 ## Architecture
@@ -21,8 +21,10 @@ there is no model introspection, conditional AGENTS syntax, or startup Git fetch
 | Profile | Root | Policy skill | Workers |
 |---|---|---|---|
 | normal global default | gpt-5.6-luna / xhigh | luna-orchestra | Luna xhigh |
-| global-astra (manual experimental, explicit opt-in) | gpt-6-astra / medium | astra-decision-orchestrator | Luna xhigh |
 | global-luna | gpt-5.6-luna / xhigh | luna-orchestra | Luna xhigh |
+| global-astra-low (manual experimental, explicit opt-in) | gpt-6-astra / low | astra-decision-orchestrator | Luna xhigh |
+| global-astra-medium (manual experimental, explicit opt-in) | gpt-6-astra / medium | astra-decision-orchestrator | Luna xhigh |
+| global-astra (backward-compatible Medium alias) | gpt-6-astra / medium | astra-decision-orchestrator | Luna xhigh |
 
 DIRECT means one useful frontier, even for a difficult problem. LIGHT means roughly
 1–2 delegated lanes; HEAVY roughly 3–5, within runtime limits. Width does not select
@@ -64,19 +66,21 @@ config after later user edits.
 ## Launch
 
 For the normal Luna default, start a fresh session with the installed configuration.
-For the manual Astra experiment, explicitly select the Astra profile:
+For a manual Astra experiment, explicitly select the effort profile:
 
 ```powershell
 codex
+codex --profile global-astra-low
+codex --profile global-astra-medium
 codex --profile global-astra
 codex --profile global-luna
 ```
 
 The unprofiled global configuration is Luna XHigh. Start a fresh session when
 switching root families. Do not combine the Astra profile with `--model` selecting
-Luna, or the reverse. Same-family effort changes retain policy. During a requested
-bootstrap test the root may print a one-line mode marker; ordinary tasks need no
-bootstrap ceremony.
+Luna, or the reverse. Astra Low and Astra Medium are explicit session/profile
+choices; neither escalates automatically. During a requested bootstrap test the root
+may print a one-line mode marker; ordinary tasks need no bootstrap ceremony.
 
 Profiles sit below project and CLI overrides. Projects overriding model or developer
 instructions must keep model/policy paired. The desktop model picker alone is not
@@ -101,7 +105,7 @@ allowed by the normal policy. If pinning is unavailable, stay DIRECT and report 
 ## Capabilities and evidence
 
 See [runtime acceptance](docs/runtime-acceptance.md) for installed-version evidence,
-probes, and limitations; [instruction hierarchy](policies/instruction-hierarchy.md)
+profiles, probes, and limitations; [instruction hierarchy](policies/instruction-hierarchy.md)
 for precedence; and [trial checklist](docs/trial-checklist.md) for quota experiments.
 The exact context option is experimental; parsing and clean startup do not prove
 long-session quota savings or recovery quality.

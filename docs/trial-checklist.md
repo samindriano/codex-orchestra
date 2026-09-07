@@ -1,14 +1,20 @@
 # Lightweight manual Astra trials
 
 The normal control is the global Luna XHigh default. Use this checklist only after
-the user explicitly opts into the `MANUAL_EXPERIMENTAL` Astra profile; never use
+the user explicitly opts into a `MANUAL_EXPERIMENTAL` Astra profile; never use
 difficulty, conflict, review, HEAVY work, ambiguity, or disagreement as an automatic
-reason to switch roots. Use comparable, meaningful tasks where possible:
+reason to switch roots. Reasoning effort is a session/profile choice and must not
+escalate automatically. Use comparable, meaningful tasks where possible:
 
 1. Luna XHigh DIRECT baseline.
-2. Astra Medium DIRECT (explicit opt-in).
-3. Astra Medium plus one Luna XHigh worker (explicit opt-in).
-4. Astra Medium plus 2–3 useful independent Luna XHigh workers (explicit opt-in).
+2. `global-astra-low` DIRECT (explicit opt-in).
+3. Only if Trial A economics are acceptable, `global-astra-medium` DIRECT (explicit opt-in).
+4. Only after the direct trials, Astra Low or Medium plus 1–2 Luna XHigh evidence workers (explicit opt-in).
+
+The existing `global-astra` command is a backward-compatible alias for
+`global-astra-medium`. Do not run a large artificial benchmark during this setup
+task. Claims about Astra economics or quality are hypotheses for these bounded
+trials, not global policy.
 
 Record the following once at start/end, without adding ceremony to every step:
 

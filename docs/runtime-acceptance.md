@@ -1,8 +1,8 @@
 # Runtime acceptance — 2026-09-06
 
 This is a bounded local installation acceptance record, not a performance benchmark.
-The normal global default is now GPT-5.6 Luna XHigh; Astra Medium remains a
-manual experimental profile requiring explicit user opt-in.
+The normal global default is now GPT-5.6 Luna XHigh; Astra Low and Medium are
+manual experimental profiles requiring explicit user opt-in.
 
 - Initial terminal CLI: 0.150.1. Profiles already use separate name.config.toml files.
 - Initial desktop engine: 0.153.1. The desktop independently updated to 0.153.4
@@ -84,8 +84,9 @@ requests and is not a network sandbox.
 ## Revised-policy continuation
 
 - The source policy now makes the normal global root and workers GPT-5.6 Luna
-  XHigh. Astra remains `MANUAL_EXPERIMENTAL` / `EXPLICIT_USER_OPT_IN` at Medium;
-  all delegated workers remain Luna XHigh.
+  XHigh. Astra Low and Medium are `MANUAL_EXPERIMENTAL` /
+  `EXPLICIT_USER_OPT_IN`; the existing `global-astra` profile remains a
+  backward-compatible Medium alias. All delegated workers remain Luna XHigh.
 - Focused installer regression suite: 12 tests passed with `TEMP`, `TMP`, and
   `TMPDIR` set to the writable `work\test-temp` directory.
 - `python -m py_compile scripts/global_policy.py tests/test_global_policy.py` and
@@ -108,3 +109,24 @@ requests and is not a network sandbox.
   delayed completion mechanism remains UNKNOWN.
 - A fresh Luna profile bootstrap was not run under the no-network constraint;
   installed file/config verification passed instead.
+
+## Astra effort-profile refinement — 2026-09-07
+
+- Starting commit: `162a24f feat: make Luna the global orchestration default`.
+- Added `global-astra-low` (`gpt-6-astra` / `low`) and
+  `global-astra-medium` (`gpt-6-astra` / `medium`). The existing
+  `global-astra` profile remains a backward-compatible Medium alias. Each profile
+  carries the manual opt-in markers and keeps workers on Luna XHigh.
+- The installer now treats all three Astra profiles as canonical managed files.
+  Real-home installation passed and created backup
+  `C:\Users\Sam\.codex\orchestra-backups\20260907T002833063216Z` with its
+  manifest. `verify --require-context-management` passed; the second dry run
+  reported `changed_files=[]` and context management remained enabled.
+- Installer regression suite: 13 tests passed. Skill validators for Astra,
+  Luna, and the compatibility router passed. Python compilation and
+  `git diff --check` passed.
+- `codex exec --profile global-astra-low --help`,
+  `global-astra-medium --help`, `global-astra --help`, and
+  `global-luna --help` all exited zero on Codex 0.153.1. No Astra task was
+  launched solely for this configuration check, so Low/Medium live model metadata,
+  quota economics, and quality remain UNKNOWN until bounded user-directed trials.

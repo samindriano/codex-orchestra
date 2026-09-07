@@ -13,10 +13,11 @@ evidence; they cannot certify current state or authorize changes.
 
 The normal global configuration default is GPT-5.6 Luna XHigh for the root and
 Luna XHigh for workers. Profiles are below project and CLI configuration in native
-precedence. The `global-astra` profile is `MANUAL_EXPERIMENTAL` and
-`EXPLICIT_USER_OPT_IN`: it selects Astra Medium only when the user explicitly
-starts that profile, and its workers remain Luna XHigh. A project or explicit
-override can change a model or developer instructions. Inspect effective
+precedence. The `global-astra-low` and `global-astra-medium` profiles are
+`MANUAL_EXPERIMENTAL` and `EXPLICIT_USER_OPT_IN`; the backward-compatible
+`global-astra` alias means Medium. The selected profile supplies Astra's effort
+and its workers remain Luna XHigh; effort never escalates automatically. A project
+or explicit override can change a model or developer instructions. Inspect effective
 configuration when an overlay changes those keys. Never combine one family's
 profile with a different family via `--model`; start a fresh matching profile.
 Same-family reasoning overrides keep the same policy.

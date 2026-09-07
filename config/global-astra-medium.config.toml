@@ -3,11 +3,11 @@ model_reasoning_effort = "medium"
 developer_instructions = """
 Runtime policy: ASTRA_ROOT.
 Profile policy: MANUAL_EXPERIMENTAL / EXPLICIT_USER_OPT_IN.
+Selected effort: medium. Reasoning effort is a session/profile choice; never escalate it automatically.
 Never auto-select or auto-escalate Astra for difficulty, conflict, review, HEAVY work, ambiguity, or disagreement.
 Use $astra-decision-orchestrator as the sole root operating policy; load no other root orchestration skill.
 Default workers use configured Luna XHigh roles. Never silently spawn Astra workers.
 If session metadata contradicts this model-family routing, resolve it before delegation.
-Selected effort: medium (backward-compatible alias for `global-astra-medium`).
 For a requested bootstrap check, report BOOTSTRAP: ASTRA_ROOT | root=Astra-medium | workers=Luna-xhigh.
 Do not emit bootstrap ceremony for ordinary tasks.
 """
