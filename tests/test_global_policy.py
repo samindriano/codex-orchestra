@@ -37,7 +37,7 @@ class GlobalPolicyTests(unittest.TestCase):
                         "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\\\scripts\\\\orchestra_telemetry.py\" hook",
                         "timeout": 3,
                     }]}]
-                    for event in ("SessionStart", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
+                    for event in ("SessionStart", "UserPromptSubmit", "Stop", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
                 },
             }),
             "skills/astra-decision-orchestrator/SKILL.md": "# Astra\n",

@@ -1,7 +1,31 @@
 {
-  "description": "CODEX ORCHESTRA TELEMETRY V1 lifecycle hooks",
+  "description": "CODEX ORCHESTRA TELEMETRY V1.2 session and turn lifecycle hooks",
   "hooks": {
     "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
       {
         "hooks": [
           {

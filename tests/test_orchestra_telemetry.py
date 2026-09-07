@@ -26,6 +26,7 @@ from scripts.orchestra_telemetry import (
     parse_codex_exec_json,
     parse_session_usage,
     report,
+    _project_metadata,
 )
 
 
@@ -48,12 +49,19 @@ class OrchestraTelemetryTests(unittest.TestCase):
         event.update(fields)
         return event
 
-    def _exec_json(self, name: str, thread_id: str, *, usage: dict[str, object] | None = None, malformed: bool = False) -> Path:
+    def _turn_lifecycle(self, session_id: str, turn_id: str = "turn-1", **fields: object) -> str:
+        handle_hook_event(self.store, self._hook("SessionStart", session_id, **fields))
+        start = handle_hook_event(self.store, self._hook("UserPromptSubmit", session_id, turn_id=turn_id, **fields))
+        handle_hook_event(self.store, self._hook("Stop", session_id, turn_id=turn_id, **fields))
+        return str(start["run_id"])
+
+    def _exec_json(self, name: str, thread_id: str, *, turn_id: str | None = None, usage: dict[str, object] | None = None, malformed: bool = False) -> Path:
         path = self.root / name
+        turn_id = turn_id or f"{thread_id}-turn"
         lines = [
             {"type": "thread.started", "thread_id": thread_id},
-            {"type": "turn.started"},
-            {"type": "turn.completed", "usage": usage or {
+            {"type": "turn.started", "turn_id": turn_id},
+            {"type": "turn.completed", "turn_id": turn_id, "usage": usage or {
                 "input_tokens": 50,
                 "cached_input_tokens": 10,
                 "output_tokens": 20,
@@ -100,10 +108,10 @@ class OrchestraTelemetryTests(unittest.TestCase):
             return original_open(path, *args, **kwargs)
 
         with patch.object(Path, "open", new=guarded_open):
-            start = handle_hook_event(self.store, self._hook("SessionStart", "session-blind", transcript_path=str(transcript)))
+            run_id = self._turn_lifecycle("session-blind", transcript_path=str(transcript))
             final = handle_hook_event(self.store, self._hook("SessionEnd", "session-blind", transcript_path=str(transcript)))
-        self.assertEqual(start["run_id"], final["run_id"])
-        folded = self._fold(start["run_id"])
+        self.assertEqual(final["status"], "SESSION_ENDED")
+        folded = self._fold(run_id)
         self.assertIsNone(folded["usage"]["total_tokens"])
         self.assertEqual(folded["usage_source"], "NONE")
         self.assertEqual(folded["usage_quality"], "UNKNOWN")
@@ -112,9 +120,8 @@ class OrchestraTelemetryTests(unittest.TestCase):
     def test_malicious_or_huge_transcript_cannot_affect_telemetry(self) -> None:
         transcript = self.root / "huge-secret.jsonl"
         transcript.write_text("PROMPT_SECRET TOOL_SECRET " * 20000, encoding="utf-8")
-        result = handle_hook_event(self.store, self._hook("SessionStart", "session-huge", transcript_path=str(transcript), model="future-model-example-v99"))
-        handle_hook_event(self.store, self._hook("SessionEnd", "session-huge", transcript_path=str(transcript), model="future-model-example-v99"))
-        folded = self._fold(result["run_id"])
+        run_id = self._turn_lifecycle("session-huge", transcript_path=str(transcript), model="future-model-example-v99")
+        folded = self._fold(run_id)
         self.assertEqual(folded["orchestra"]["root"]["model"], "future-model-example-v99")
         self.assertIsNone(folded["usage"]["total_tokens"])
         ledger = self.store.ledger_path.read_text(encoding="utf-8")
@@ -123,14 +130,12 @@ class OrchestraTelemetryTests(unittest.TestCase):
 
     def test_stable_hook_model_accepts_luna_astra_and_future_values(self) -> None:
         for session_id, model in (("luna", "gpt-5.6-luna"), ("astra", "gpt-6-astra"), ("future", "future-model-example-v99")):
-            start = handle_hook_event(self.store, self._hook("SessionStart", session_id, model=model))
-            handle_hook_event(self.store, self._hook("SessionEnd", session_id, model=model))
-            self.assertEqual(self._fold(start["run_id"])["orchestra"]["root"]["model"], model)
+            run_id = self._turn_lifecycle(session_id, model=model)
+            self.assertEqual(self._fold(run_id)["orchestra"]["root"]["model"], model)
 
     def test_missing_effort_and_profile_are_unknown_without_reverse_inference(self) -> None:
-        start = handle_hook_event(self.store, self._hook("SessionStart", "session-effort", model="gpt-6-astra"))
-        handle_hook_event(self.store, self._hook("SessionEnd", "session-effort", model="gpt-6-astra"))
-        folded = self._fold(start["run_id"])
+        run_id = self._turn_lifecycle("session-effort", model="gpt-6-astra")
+        folded = self._fold(run_id)
         self.assertIsNone(folded["orchestra"]["root"]["reasoning_effort"])
         self.assertEqual(folded["reasoning_effort_source"], "NONE")
         self.assertIsNone(folded["orchestra"]["root"]["profile"])
@@ -138,9 +143,8 @@ class OrchestraTelemetryTests(unittest.TestCase):
 
     def test_launcher_metadata_is_explicit_and_can_supply_exact_usage(self) -> None:
         launcher = {"profile": "global-luna", "mode": "LIGHT", "reasoning_effort": "xhigh", "usage": {"model_requests": 1, "input_tokens": 10, "cached_input_tokens": 2, "output_tokens": 4, "reasoning_tokens": 1, "total_tokens": 14}}
-        start = handle_hook_event(self.store, self._hook("SessionStart", "session-launcher", orchestra_launcher=launcher))
-        handle_hook_event(self.store, self._hook("SessionEnd", "session-launcher", orchestra_launcher=launcher))
-        folded = self._fold(start["run_id"])
+        run_id = self._turn_lifecycle("session-launcher", orchestra_launcher=launcher)
+        folded = self._fold(run_id)
         self.assertEqual(folded["orchestra"]["mode"], "LIGHT")
         self.assertEqual(folded["orchestra"]["root"]["profile"], "global-luna")
         self.assertEqual(folded["orchestra"]["root"]["reasoning_effort"], "xhigh")
@@ -150,13 +154,14 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual(folded["usage"]["total_tokens"], 14)
 
     def test_codex_exec_json_adapter_is_exact_and_correlated(self) -> None:
-        path = self._exec_json("exec-output.jsonl", "thread-exact")
-        observation = parse_codex_exec_json(path, expected_thread_id="thread-exact")
+        path = self._exec_json("exec-output.jsonl", "thread-exact", turn_id="turn-exact")
+        observation = parse_codex_exec_json(path, expected_thread_id="thread-exact", expected_turn_id="turn-exact")
         self.assertEqual(observation.usage_source, "CODEX_EXEC_JSON")
         self.assertEqual(observation.usage_quality, "EXACT")
         self.assertEqual(observation.usage["total_tokens"], 70)
+        self.assertEqual(observation.turn_id, "turn-exact")
         run_id = create_run(self.store, task_label="exec-adapter")["run_id"]
-        ingest_codex_exec_json(self.store, run_id, path, expected_thread_id="thread-exact")
+        ingest_codex_exec_json(self.store, run_id, path, expected_thread_id="thread-exact", expected_turn_id="turn-exact", turn_id="turn-exact", measurement_generation="TURN_LEVEL_V1_2")
         folded = self._fold(run_id)
         self.assertEqual(folded["usage_source"], "CODEX_EXEC_JSON")
         self.assertEqual(folded["usage_quality"], "EXACT")
@@ -171,11 +176,85 @@ class OrchestraTelemetryTests(unittest.TestCase):
         wrong = parse_codex_exec_json(malformed, expected_thread_id="wrong-thread")
         self.assertEqual(wrong.usage_quality, "UNKNOWN")
 
+    def test_turn_chronology_is_distinct_from_later_inspection_turn(self) -> None:
+        handle_hook_event(self.store, self._hook("SessionStart", "long-session"))
+        first = handle_hook_event(self.store, self._hook("UserPromptSubmit", "long-session", turn_id="substantive-A", prompt="PROMPT_A"))
+        handle_hook_event(self.store, self._hook("Stop", "long-session", turn_id="substantive-A", last_assistant_message="ANSWER_A"))
+        second = handle_hook_event(self.store, self._hook("UserPromptSubmit", "long-session", turn_id="inspection-B", prompt="PROMPT_B"))
+        handle_hook_event(self.store, self._hook("Stop", "long-session", turn_id="inspection-B", last_assistant_message="ANSWER_B"))
+        handle_hook_event(self.store, self._hook("SessionEnd", "long-session"))
+        self.assertNotEqual(first["run_id"], second["run_id"])
+        self.assertEqual(self._fold(first["run_id"])["turn_id"], "substantive-A")
+        self.assertEqual(self._fold(second["run_id"])["turn_id"], "inspection-B")
+        self.assertEqual(report(self.store)["run_count"], 2)
+        ledger = self.store.ledger_path.read_text(encoding="utf-8")
+        for secret in ("PROMPT_A", "PROMPT_B", "ANSWER_A", "ANSWER_B"):
+            self.assertNotIn(secret, ledger)
+
+    def test_interrupt_resume_and_compaction_keep_turn_identity(self) -> None:
+        handle_hook_event(self.store, self._hook("SessionStart", "resume-session"))
+        interrupted = handle_hook_event(self.store, self._hook("UserPromptSubmit", "resume-session", turn_id="turn-interrupted"))
+        self.assertEqual(handle_hook_event(self.store, self._hook("PreCompact", "resume-session", turn_id="turn-interrupted"))["status"], "IGNORED")
+        handle_hook_event(self.store, self._hook("Interrupt", "resume-session", turn_id="turn-interrupted"))
+        handle_hook_event(self.store, self._hook("Stop", "resume-session", turn_id="turn-interrupted"))
+        resumed = handle_hook_event(self.store, self._hook("UserPromptSubmit", "resume-session", turn_id="turn-resumed"))
+        handle_hook_event(self.store, self._hook("Stop", "resume-session", turn_id="turn-resumed"))
+        first = self._fold(str(interrupted["run_id"]))
+        second = self._fold(str(resumed["run_id"]))
+        self.assertEqual(first["turn_status"], "INTERRUPTED")
+        self.assertFalse(first["result"]["completed"])
+        self.assertEqual(second["turn_status"], "COMPLETED")
+        self.assertTrue(second["result"]["completed"])
+        self.assertEqual(len([r for r in self.store.read() if r["record_type"] == "turn_finalize"]), 2)
+
+    def test_turn_workers_link_to_parent_turn_without_fabricated_worker_usage(self) -> None:
+        handle_hook_event(self.store, self._hook("SessionStart", "worker-session"))
+        start = handle_hook_event(self.store, self._hook("UserPromptSubmit", "worker-session", turn_id="turn-workers"))
+        handle_hook_event(self.store, self._hook("SubagentStart", "worker-session", turn_id="turn-workers", agent_id="agent-1", agent_type="explorer", model="worker-model"))
+        handle_hook_event(self.store, self._hook("SubagentStop", "worker-session", turn_id="turn-workers", agent_id="agent-1", agent_type="explorer", model="worker-model", last_assistant_message="WORKER_SECRET"))
+        handle_hook_event(self.store, self._hook("Stop", "worker-session", turn_id="turn-workers"))
+        folded = self._fold(str(start["run_id"]))
+        self.assertEqual(folded["orchestra"]["workers"][0]["worker_id"], "agent-1")
+        self.assertEqual(folded["orchestra"]["workers"][0]["model"], "worker-model")
+        self.assertIsNone(folded["usage"]["total_tokens"])
+        self.assertNotIn("WORKER_SECRET", self.store.ledger_path.read_text(encoding="utf-8"))
+
+    def test_project_metadata_distinguishes_worktree_repo_branch_and_non_git(self) -> None:
+        repo = self.root / "ordinary-repo"
+        (repo / ".git").mkdir(parents=True)
+        (repo / ".git" / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+        worktree = self.root / "idx-foreign-flow-prospective-pit-shadow-v1"
+        worktree.mkdir()
+        git_dir = repo / ".git" / "worktrees" / worktree.name
+        git_dir.mkdir(parents=True)
+        (git_dir / "HEAD").write_text("ref: refs/heads/feature/pit-shadow\n", encoding="utf-8")
+        (git_dir / "commondir").write_text(str(repo / ".git") + "\n", encoding="utf-8")
+        (worktree / ".git").write_text(f"gitdir: {git_dir}\n", encoding="utf-8")
+        git_meta = _project_metadata(str(worktree))
+        self.assertEqual((git_meta.kind, git_meta.label, git_meta.repo_label, git_meta.branch), ("GIT", worktree.name, "ordinary-repo", "feature-pit-shadow"))
+        ordinary_meta = _project_metadata(str(repo))
+        self.assertEqual((ordinary_meta.kind, ordinary_meta.label, ordinary_meta.branch), ("GIT", "ordinary-repo", "main"))
+        no_project = _project_metadata(None)
+        self.assertEqual((no_project.kind, no_project.label), ("NO_PROJECT", None))
+
+    def test_concurrent_sessions_and_turns_do_not_cross_attribute(self) -> None:
+        def run(index: int) -> tuple[str, str]:
+            session_id = f"concurrent-session-{index}"
+            turn_id = f"concurrent-turn-{index}"
+            run_id = self._turn_lifecycle(session_id, turn_id)
+            return session_id, run_id
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(run, range(8)))
+        self.assertEqual(len({run_id for _, run_id in results}), 8)
+        for session_id, run_id in results:
+            folded = self._fold(run_id)
+            self.assertEqual(folded["session_id"], session_id)
+            self.assertEqual(folded["turn_id"], session_id.replace("session", "turn"))
+
     def test_interactive_session_without_stable_usage_is_valid_unknown(self) -> None:
-        start = handle_hook_event(self.store, self._hook("SessionStart", "session-unknown"))
-        final = handle_hook_event(self.store, self._hook("SessionEnd", "session-unknown"))
-        self.assertEqual(final["status"], "FINALIZED")
-        folded = self._fold(start["run_id"])
+        run_id = self._turn_lifecycle("session-unknown")
+        folded = self._fold(run_id)
         for field in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_tokens", "total_tokens"):
             self.assertIsNone(folded["usage"][field])
         self.assertEqual(folded["usage_quality"], "UNKNOWN")
@@ -196,10 +275,11 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual(sorted(totals), [11, 22])
 
     def test_root_worker_lifecycle_does_not_imply_worker_token_usage(self) -> None:
-        start = handle_hook_event(self.store, self._hook("SessionStart", "session-worker"))
-        handle_hook_event(self.store, self._hook("SubagentStart", "session-worker", agent_id="worker-1", agent_type="explorer", model="future-worker-v2"))
-        handle_hook_event(self.store, self._hook("SubagentStop", "session-worker", agent_id="worker-1", agent_type="explorer", model="future-worker-v2", agent_transcript_path=str(self.root / "never-open.jsonl")))
-        handle_hook_event(self.store, self._hook("SessionEnd", "session-worker"))
+        handle_hook_event(self.store, self._hook("SessionStart", "session-worker"))
+        start = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-worker", turn_id="turn-worker"))
+        handle_hook_event(self.store, self._hook("SubagentStart", "session-worker", turn_id="turn-worker", agent_id="worker-1", agent_type="explorer", model="future-worker-v2"))
+        handle_hook_event(self.store, self._hook("SubagentStop", "session-worker", turn_id="turn-worker", agent_id="worker-1", agent_type="explorer", model="future-worker-v2", agent_transcript_path=str(self.root / "never-open.jsonl")))
+        handle_hook_event(self.store, self._hook("Stop", "session-worker", turn_id="turn-worker"))
         folded = self._fold(start["run_id"])
         self.assertEqual(folded["orchestra"]["workers_started"], 1)
         self.assertEqual(folded["orchestra"]["workers_completed"], 1)
@@ -208,9 +288,8 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual(folded["orchestra"]["attribution_quality"], "ROOT_WORKER_USAGE_PARTIAL")
 
     def test_project_and_no_project_metadata_never_persist_full_cwd(self) -> None:
-        start = handle_hook_event(self.store, self._hook("SessionStart", "session-no-project", cwd=None))
-        handle_hook_event(self.store, self._hook("SessionEnd", "session-no-project", cwd=None))
-        self.assertEqual(self._fold(start["run_id"])["task"]["project_kind"], "NO_PROJECT")
+        run_id = self._turn_lifecycle("session-no-project", cwd=None)
+        self.assertEqual(self._fold(run_id)["task"]["project_kind"], "NO_PROJECT")
         self.assertNotIn(str(self.root), self.store.ledger_path.read_text(encoding="utf-8"))
 
     def test_duplicate_run_and_source_are_rejected(self) -> None:
@@ -254,6 +333,14 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual(summary["groups"][0]["usage_qualified_runs"], 1)
         self.assertEqual(summary["groups"][0]["median_total_tokens"], 12.0)
         self.assertEqual(summary["groups"][0]["median_total_tokens_n"], 1)
+
+    def test_legacy_session_level_runs_are_excluded_from_default_turn_report(self) -> None:
+        legacy = create_run(self.store, task_label="codex-session", run_id="legacy-session")
+        finalize_run(self.store, legacy["run_id"])
+        self.assertEqual(report(self.store)["run_count"], 0)
+        compatibility = report(self.store, include_session_level=True)
+        self.assertEqual(compatibility["run_count"], 1)
+        self.assertEqual(compatibility["groups"][0]["runs"], 1)
 
     def test_concurrent_appends_remain_valid(self) -> None:
         def write(index: int) -> dict[str, object]:

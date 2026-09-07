@@ -81,7 +81,7 @@ _ROLE_CONFIG_PATHS = {
     ("agents", "explorer", "config_file"): "./agents/explorer.toml",
 }
 _CONTEXT_PATH = ("features", "context_management", "experimental_mode")
-_TELEMETRY_HOOK_EVENTS = ("SessionStart", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
+_TELEMETRY_HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "Stop", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
 _SECTION_RE = re.compile(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?(?:\r?\n)?$")
 _ASSIGNMENT_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.*?)(\r?\n)?$")
 
