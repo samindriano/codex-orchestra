@@ -709,7 +709,7 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     return run
 
 
-def report(store: TelemetryStore, *, group_by: list[str] | None = None) -> dict[str, Any]:
+def report(store: TelemetryStore, *, group_by: list[str] | None = None, include_synthetic: bool = False) -> dict[str, Any]:
     records = store.read()
     runs: dict[str, list[dict[str, Any]]] = {}
     manual: list[dict[str, Any]] = []
@@ -718,7 +718,21 @@ def report(store: TelemetryStore, *, group_by: list[str] | None = None) -> dict[
             manual.append(record)
         elif record.get("run_id"):
             runs.setdefault(record["run_id"], []).append(record)
-    folded = [_fold_run(items) for items in runs.values()]
+    synthetic_run_ids = {
+        run_id
+        for run_id, items in runs.items()
+        if any(
+            item.get("record_type") == "usage_observed"
+            and item.get("source_kind") == "SYNTHETIC_FIXTURE"
+            for item in items
+        )
+    }
+    report_runs = (
+        runs
+        if include_synthetic
+        else {run_id: items for run_id, items in runs.items() if run_id not in synthetic_run_ids}
+    )
+    folded = [_fold_run(items) for items in report_runs.values()]
     folded.sort(key=lambda item: item["run_id"])
     fields = group_by or ["task_class", "mode", "root_model", "reasoning_effort", "worker_count"]
 
@@ -767,6 +781,9 @@ def report(store: TelemetryStore, *, group_by: list[str] | None = None) -> dict[
         "report_kind": "DESCRIPTIVE_OFFLINE",
         "groups": summaries,
         "run_count": len(folded),
+        "include_synthetic": include_synthetic,
+        "synthetic_run_count": len(synthetic_run_ids),
+        "synthetic_runs_excluded": 0 if include_synthetic else len(synthetic_run_ids),
         "legacy_manual_observation_count": len(manual),
         "manual_observations_are_separate": True,
         "routing_recommendations": None,
@@ -851,6 +868,7 @@ def _parser() -> argparse.ArgumentParser:
 
     summary = sub.add_parser("report")
     summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "root_model", "reasoning_effort", "worker_count"])
+    summary.add_argument("--include-synthetic", action="store_true")
     return parser
 
 
@@ -894,7 +912,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "import-manual":
             result = import_manual(store, label=args.label, source_note=args.source_note, root_model=args.root_model, reasoning_effort=args.reasoning_effort, mode=args.mode, worker_count=args.worker_count, values={"input_tokens": args.input_tokens, "cached_input_tokens": args.cached_input_tokens, "output_tokens": args.output_tokens, "total_tokens": args.total_tokens}, allowances={"weekly_before": args.weekly_before, "weekly_after": args.weekly_after, "five_hour_before": args.five_hour_before, "five_hour_after": args.five_hour_after})
         elif args.command == "report":
-            _json_print(report(store, group_by=args.group_by))
+            _json_print(report(store, group_by=args.group_by, include_synthetic=args.include_synthetic))
             return 0
         else:
             raise TelemetryError(f"unsupported command: {args.command}")

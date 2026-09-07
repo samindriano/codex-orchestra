@@ -62,10 +62,14 @@ class OrchestraTelemetryTests(unittest.TestCase):
         )
         add_annotation(self.store, run_id, reviewer_verdict="PASS", first_pass="PASS")
         result = report(self.store)
-        self.assertEqual(result["run_count"], 1)
-        self.assertEqual(result["groups"][0]["completion_rate"], 1.0)
-        self.assertEqual(result["groups"][0]["first_pass_pass_rate"], 1.0)
-        self.assertEqual(result["groups"][0]["median_total_tokens"], 130.0)
+        self.assertEqual(result["run_count"], 0)
+        self.assertEqual(result["synthetic_run_count"], 1)
+        self.assertEqual(result["synthetic_runs_excluded"], 1)
+        result_with_fixture = report(self.store, include_synthetic=True)
+        self.assertEqual(result_with_fixture["run_count"], 1)
+        self.assertEqual(result_with_fixture["groups"][0]["completion_rate"], 1.0)
+        self.assertEqual(result_with_fixture["groups"][0]["first_pass_pass_rate"], 1.0)
+        self.assertEqual(result_with_fixture["groups"][0]["median_total_tokens"], 130.0)
         for record in self.store.read():
             measurement = record.get("measurement")
             if measurement:
@@ -186,8 +190,8 @@ class OrchestraTelemetryTests(unittest.TestCase):
         isolated_home.mkdir()
         global_policy.install(isolated_home, source_root=Path(__file__).parents[1])
         self.assertFalse((isolated_home / "orchestra-telemetry").exists())
-        policy_source = Path(global_policy.__file__).read_text(encoding="utf-8")
-        self.assertNotIn("orchestra_telemetry", policy_source)
+        self.assertEqual(global_policy.verify(isolated_home, source_root=Path(__file__).parents[1])["model"], "gpt-5.6-luna")
+        self.assertEqual(global_policy.verify(isolated_home, source_root=Path(__file__).parents[1])["default_subagent_model"], "gpt-5.6-luna")
 
     def test_explicit_file_boundary_rejects_directories(self) -> None:
         with self.assertRaises(TelemetryError):

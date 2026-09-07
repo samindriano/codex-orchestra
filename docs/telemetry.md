@@ -60,6 +60,16 @@ new complete file in the same directory, fsyncs it, and atomically replaces the
 ledger. A malformed, truncated, unknown-schema, unknown-field, or duplicate-ID
 ledger blocks further writes and reporting.
 
+The canonical codex-orchestra installer has one explicit telemetry mapping:
+
+```text
+scripts/orchestra_telemetry.py
+    -> CODEX_HOME/scripts/orchestra_telemetry.py
+```
+
+No other repository scripts are copied. The collector remains optional and is
+not imported by Codex startup.
+
 Records are append-only events folded into a run view:
 
 - `run_start` — task label/class/complexity, explicit orchestra metadata, and
@@ -111,7 +121,10 @@ is intentionally marked `APPROXIMATE_MANUAL` and is excluded from run counts.
 Reporting is descriptive and offline. It groups by task class, mode, root model,
 reasoning effort, and worker count, and reports completion, first-pass, rework,
 medians, and allowance deltas only when denominators exist. It emits no routing
-recommendation or composite quality score.
+recommendation or composite quality score. Synthetic runs are explicitly marked
+by `source_kind = SYNTHETIC_FIXTURE` and excluded from default reports; use
+`report --include-synthetic` only for fixture inspection. Approximate manual
+observations remain separate from both normal and synthetic run counts.
 
 ## Validation
 

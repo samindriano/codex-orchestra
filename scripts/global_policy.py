@@ -31,6 +31,10 @@ _ASTRA_MANUAL_MARKERS = ("MANUAL_EXPERIMENTAL", "EXPLICIT_USER_OPT_IN")
 
 _SOURCE_DESTINATIONS = (
     ("policies/GLOBAL_AGENTS.md", "AGENTS.md", "text"),
+    # Keep the passive collector an explicit, non-recursive installation
+    # target.  It is intentionally not a skill or a profile and is not
+    # imported by normal Codex startup unless a user invokes it.
+    ("scripts/orchestra_telemetry.py", "scripts/orchestra_telemetry.py", "text"),
     (
         "skills/astra-decision-orchestrator/SKILL.md",
         "skills/astra-decision-orchestrator/SKILL.md",

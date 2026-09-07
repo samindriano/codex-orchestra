@@ -27,6 +27,7 @@ class GlobalPolicyTests(unittest.TestCase):
     def _write_source(self) -> None:
         text = {
             "policies/GLOBAL_AGENTS.md": "# Global policy\nCODEX_ORCHESTRA_GLOBAL_POLICY_V1\n",
+            "scripts/orchestra_telemetry.py": "#!/usr/bin/env python3\nSYNTHETIC_TELEMETRY_FIXTURE\n",
             "skills/astra-decision-orchestrator/SKILL.md": "# Astra\n",
             "skills/luna-orchestra/SKILL.md": "# Luna\n",
             "skills/orchestrate/SKILL.md": "# Orchestrate\n",
@@ -76,6 +77,49 @@ class GlobalPolicyTests(unittest.TestCase):
             path = self.source / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(contents, encoding="utf-8")
+
+    def test_telemetry_is_an_explicit_installer_destination(self) -> None:
+        self.assertIn(
+            ("scripts/orchestra_telemetry.py", "scripts/orchestra_telemetry.py", "text"),
+            global_policy._SOURCE_DESTINATIONS,
+        )
+
+    def test_telemetry_installs_verifies_and_unrelated_scripts_do_not(self) -> None:
+        self._write_config()
+        unrelated = self.source / "scripts/not-telemetry.py"
+        unrelated.write_text("should not install\n", encoding="utf-8")
+        report = global_policy.install(self.home, source_root=self.source)
+        target = self.home / "scripts/orchestra_telemetry.py"
+        self.assertIn("scripts/orchestra_telemetry.py", report["changed_files"])
+        self.assertEqual(target.read_text(encoding="utf-8"), (self.source / "scripts/orchestra_telemetry.py").read_text(encoding="utf-8"))
+        self.assertFalse((self.home / "scripts/not-telemetry.py").exists())
+        self.assertEqual(global_policy.verify(self.home, source_root=self.source)["verdict"], "PASS")
+
+    def test_telemetry_source_update_propagates_and_backup_is_created(self) -> None:
+        self._write_config()
+        first = global_policy.install(self.home, source_root=self.source)
+        self.assertIn("scripts/orchestra_telemetry.py", first["changed_files"])
+        target = self.home / "scripts/orchestra_telemetry.py"
+        old = target.read_text(encoding="utf-8")
+        updated = old + "SOURCE_UPDATE_V2\n"
+        (self.source / "scripts/orchestra_telemetry.py").write_text(updated, encoding="utf-8")
+        second = global_policy.install(self.home, source_root=self.source)
+        self.assertIn("scripts/orchestra_telemetry.py", second["changed_files"])
+        backup = Path(second["backup_dir"])
+        self.assertEqual((backup / "scripts/orchestra_telemetry.py").read_text(encoding="utf-8"), old)
+        self.assertEqual(target.read_text(encoding="utf-8"), updated)
+
+    def test_corrupt_or_missing_telemetry_fails_verify(self) -> None:
+        self._write_config()
+        global_policy.install(self.home, source_root=self.source)
+        target = self.home / "scripts/orchestra_telemetry.py"
+        target.write_text("corrupt\n", encoding="utf-8")
+        with self.assertRaises(global_policy.PolicyError):
+            global_policy.verify(self.home, source_root=self.source)
+        target.write_text((self.source / "scripts/orchestra_telemetry.py").read_text(encoding="utf-8"), encoding="utf-8")
+        target.unlink()
+        with self.assertRaises(global_policy.PolicyError):
+            global_policy.verify(self.home, source_root=self.source)
 
     def _write_config(self, contents: str | None = None) -> None:
         self.home.joinpath("config.toml").write_text(
@@ -193,6 +237,15 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertTrue(first["changed_files"])
         self.assertEqual(second["changed_files"], [])
         self.assertEqual(sorted(backup_root.iterdir()), backups)
+
+    def test_second_install_is_idempotent_with_telemetry_destination(self) -> None:
+        self._write_config()
+        first = global_policy.install(self.home, source_root=self.source)
+        backups = sorted((self.home / "orchestra-backups").iterdir())
+        second = global_policy.install(self.home, source_root=self.source)
+        self.assertTrue(first["changed_files"])
+        self.assertEqual(second["changed_files"], [])
+        self.assertEqual(sorted((self.home / "orchestra-backups").iterdir()), backups)
 
     def test_unknown_profile_setting_fails_without_mutation(self) -> None:
         self._write_config()
