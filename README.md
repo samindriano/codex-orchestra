@@ -128,3 +128,10 @@ No project repository is modified by this installer.
 python -m unittest discover -s tests -v
 git diff --check
 ```
+
+## Optional passive telemetry
+
+`docs/telemetry.md` describes the local-only `orchestra_telemetry_v1` collector.
+It parses allowlisted post-run usage events without adding model requests,
+workers, prompts, or context. It is not installed or enabled by default and does
+not change orchestration routing.
