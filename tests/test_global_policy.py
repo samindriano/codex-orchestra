@@ -28,6 +28,18 @@ class GlobalPolicyTests(unittest.TestCase):
         text = {
             "policies/GLOBAL_AGENTS.md": "# Global policy\nCODEX_ORCHESTRA_GLOBAL_POLICY_V1\n",
             "scripts/orchestra_telemetry.py": "#!/usr/bin/env python3\nSYNTHETIC_TELEMETRY_FIXTURE\n",
+            "config/hooks.json": json.dumps({
+                "description": "CODEX ORCHESTRA TELEMETRY V1 lifecycle hooks",
+                "hooks": {
+                    event: [{"hooks": [{
+                        "type": "command",
+                        "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+                        "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\\\scripts\\\\orchestra_telemetry.py\" hook",
+                        "timeout": 3,
+                    }]}]
+                    for event in ("SessionStart", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
+                },
+            }),
             "skills/astra-decision-orchestrator/SKILL.md": "# Astra\n",
             "skills/luna-orchestra/SKILL.md": "# Luna\n",
             "skills/orchestrate/SKILL.md": "# Orchestrate\n",
@@ -108,6 +120,37 @@ class GlobalPolicyTests(unittest.TestCase):
         backup = Path(second["backup_dir"])
         self.assertEqual((backup / "scripts/orchestra_telemetry.py").read_text(encoding="utf-8"), old)
         self.assertEqual(target.read_text(encoding="utf-8"), updated)
+
+    def test_automatic_hooks_merge_with_existing_hooks_and_are_idempotent(self) -> None:
+        self._write_config()
+        existing = {
+            "description": "user hook configuration",
+            "hooks": {
+                "Stop": [{"hooks": [{"type": "command", "command": "python user_stop.py"}]}],
+                "SessionStart": [{"hooks": [{"type": "command", "command": "python user_start.py"}]}],
+            },
+        }
+        target = self.home / "hooks.json"
+        target.write_text(json.dumps(existing), encoding="utf-8")
+        first = global_policy.install(self.home, source_root=self.source)
+        installed = json.loads(target.read_text(encoding="utf-8"))
+        self.assertEqual(installed["description"], "user hook configuration")
+        self.assertIn("python user_stop.py", json.dumps(installed))
+        for event in ("SessionStart", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd"):
+            self.assertIn(event, installed["hooks"])
+        self.assertEqual(global_policy.verify(self.home, source_root=self.source)["verdict"], "PASS")
+        second = global_policy.install(self.home, source_root=self.source)
+        self.assertEqual(second["changed_files"], [])
+        self.assertTrue(first["changed_files"])
+
+    def test_malformed_existing_hooks_fail_without_mutation(self) -> None:
+        self._write_config()
+        target = self.home / "hooks.json"
+        target.write_text("not-json\n", encoding="utf-8")
+        before = target.read_bytes()
+        with self.assertRaises(global_policy.PolicyError):
+            global_policy.install(self.home, source_root=self.source)
+        self.assertEqual(target.read_bytes(), before)
 
     def test_corrupt_or_missing_telemetry_fails_verify(self) -> None:
         self._write_config()

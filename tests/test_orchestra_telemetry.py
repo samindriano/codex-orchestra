@@ -2,19 +2,23 @@ from __future__ import annotations
 
 import concurrent.futures
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from scripts.orchestra_telemetry import (
     DuplicateRecordError,
     LedgerCorruptionError,
+    SessionParseError,
     TelemetryError,
     TelemetryStore,
     add_annotation,
     add_snapshot,
     create_run,
     finalize_run,
+    handle_hook_event,
     ingest_synthetic_usage,
     ingest_usage,
     parse_session_usage,
@@ -198,6 +202,200 @@ class OrchestraTelemetryTests(unittest.TestCase):
             parse_session_usage(Path(self.temp.name))
         with self.assertRaises(TelemetryError):
             create_run(self.store, task_label="C:/private/prompt.txt")
+
+    def _write_hook_rollout(
+        self,
+        name: str,
+        *,
+        session_id: str,
+        thread_id: str,
+        model: str,
+        effort: str,
+        total_tokens: int,
+        secret: str = "HOOK_PROMPT_SECRET",
+    ) -> Path:
+        path = Path(self.temp.name) / name
+        events = [
+            {
+                "type": "response_item",
+                "payload": {"text": secret, "tool_arguments": secret},
+            },
+            {
+                "type": "turn_context",
+                "payload": {
+                    "effort": effort,
+                    "model": model,
+                    "collaboration_mode": {"settings": {"developer_instructions": secret}},
+                },
+            },
+            {
+                "type": "token_usage_record",
+                "payload": {
+                    "session_id": session_id,
+                    "thread_id": thread_id,
+                    "thread_token_usage": {
+                        "input_tokens": total_tokens - 2,
+                        "cached_input_tokens": 1,
+                        "cache_write_input_tokens": 0,
+                        "output_tokens": 2,
+                        "reasoning_output_tokens": 1,
+                        "total_tokens": total_tokens,
+                    },
+                },
+            },
+        ]
+        path.write_text("\n".join(json.dumps(event) for event in events) + "\n", encoding="utf-8")
+        return path
+
+    def test_lifecycle_hooks_auto_create_ingest_finalize_and_aggregate_workers(self) -> None:
+        session_id = "session_auto_root"
+        root_path = self._write_hook_rollout(
+            "root-rollout.jsonl",
+            session_id=session_id,
+            thread_id=session_id,
+            model="future/gpt-9",
+            effort="medium",
+            total_tokens=10,
+        )
+        worker_path = self._write_hook_rollout(
+            "worker-rollout.jsonl",
+            session_id=session_id,
+            thread_id="worker-1",
+            model="future/worker-2",
+            effort="xhigh",
+            total_tokens=7,
+        )
+        start = handle_hook_event(self.store, {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "transcript_path": None,
+            "cwd": "C:/Windows",
+            "model": "future/gpt-9",
+        })
+        handle_hook_event(self.store, {
+            "hook_event_name": "SubagentStart",
+            "session_id": session_id,
+            "agent_id": "worker-1",
+            "agent_type": "explorer",
+            "model": "future/worker-2",
+        })
+        handle_hook_event(self.store, {
+            "hook_event_name": "SubagentStop",
+            "session_id": session_id,
+            "agent_id": "worker-1",
+            "agent_type": "explorer",
+            "agent_transcript_path": str(worker_path),
+            "model": "future/worker-2",
+        })
+        final = handle_hook_event(self.store, {
+            "hook_event_name": "SessionEnd",
+            "session_id": session_id,
+            "transcript_path": str(root_path),
+            "cwd": self.temp.name,
+            "model": "future/gpt-9",
+            "reason": "other",
+        })
+        self.assertEqual(start["run_id"], final["run_id"])
+        self.assertEqual(final["status"], "FINALIZED")
+        folded = __import__("scripts.orchestra_telemetry", fromlist=["_fold_run"])._fold_run(self.store.run_records(start["run_id"]))
+        self.assertEqual(folded["task"]["project_kind"], "NO_PROJECT")
+        self.assertEqual(folded["orchestra"]["root"]["model"], "future/gpt-9")
+        self.assertEqual(folded["orchestra"]["root"]["reasoning_effort"], "medium")
+        self.assertEqual(folded["usage"]["total_tokens"], 17)
+        self.assertEqual(folded["orchestra"]["actual_worker_count"], 1)
+        self.assertEqual(folded["orchestra"]["attribution_quality"], "ROOT_WORKER_USAGE_PARTIAL")
+        ledger = self.store.ledger_path.read_text(encoding="utf-8")
+        self.assertNotIn("HOOK_PROMPT_SECRET", ledger)
+        self.assertNotIn(str(root_path), ledger)
+        self.assertEqual(report(self.store)["run_count"], 1)
+        ledger_before_duplicate_end = self.store.ledger_path.read_bytes()
+        duplicate = handle_hook_event(self.store, {
+            "hook_event_name": "SessionEnd",
+            "session_id": session_id,
+            "transcript_path": str(root_path),
+            "cwd": self.temp.name,
+            "model": "future/gpt-9",
+            "reason": "other",
+        })
+        self.assertEqual(duplicate["run_id"], start["run_id"])
+        self.assertEqual(duplicate["status"], "FINALIZED")
+        self.assertEqual(self.store.ledger_path.read_bytes(), ledger_before_duplicate_end)
+
+    def test_hook_correlation_mismatch_fails_closed_and_disable_is_noop(self) -> None:
+        session_id = "session_exact"
+        handle_hook_event(self.store, {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "cwd": self.temp.name,
+            "model": "gpt-5.6-luna",
+        })
+        bad_path = self._write_hook_rollout(
+            "wrong-session.jsonl",
+            session_id="another-session",
+            thread_id="another-session",
+            model="gpt-5.6-luna",
+            effort="xhigh",
+            total_tokens=3,
+        )
+        with self.assertRaises(SessionParseError):
+            handle_hook_event(self.store, {
+                "hook_event_name": "SessionEnd",
+                "session_id": session_id,
+                "transcript_path": str(bad_path),
+                "cwd": self.temp.name,
+                "model": "gpt-5.6-luna",
+            })
+        missing_path = Path(self.temp.name) / "missing-session.jsonl"
+        missing_path.write_text(
+            json.dumps({
+                "type": "token_usage_record",
+                "payload": {"thread_token_usage": {"total_tokens": 3}},
+            })
+            + "\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(SessionParseError):
+            handle_hook_event(self.store, {
+                "hook_event_name": "SessionEnd",
+                "session_id": session_id,
+                "transcript_path": str(missing_path),
+                "cwd": self.temp.name,
+                "model": "gpt-5.6-luna",
+            })
+        before = self.store.ledger_path.read_bytes()
+        with patch.dict(os.environ, {"CODEX_ORCHESTRA_TELEMETRY": "0"}):
+            self.assertEqual(handle_hook_event(self.store, {
+                "hook_event_name": "SessionStart",
+                "session_id": "disabled-session",
+                "cwd": self.temp.name,
+                "model": "gpt-5.6-luna",
+            })["status"], "DISABLED")
+        self.assertEqual(self.store.ledger_path.read_bytes(), before)
+
+    def test_interrupt_is_retained_as_abnormal_without_fabricated_usage(self) -> None:
+        session_id = "session_interrupt"
+        start = handle_hook_event(self.store, {
+            "hook_event_name": "SessionStart",
+            "session_id": session_id,
+            "cwd": self.temp.name,
+            "model": "gpt-5.6-luna",
+        })
+        handle_hook_event(self.store, {
+            "hook_event_name": "Interrupt",
+            "session_id": session_id,
+            "turn_id": "turn-interrupted",
+        })
+        handle_hook_event(self.store, {
+            "hook_event_name": "SessionEnd",
+            "session_id": session_id,
+            "transcript_path": None,
+            "cwd": self.temp.name,
+            "model": "gpt-5.6-luna",
+        })
+        folded = __import__("scripts.orchestra_telemetry", fromlist=["_fold_run"])._fold_run(self.store.run_records(start["run_id"]))
+        self.assertFalse(folded["result"]["completed"])
+        self.assertEqual(folded["execution"]["abnormal_termination"], "INTERRUPTED")
+        self.assertIsNone(folded["usage"]["total_tokens"])
 
 
 if __name__ == "__main__":

@@ -132,6 +132,10 @@ git diff --check
 ## Optional passive telemetry
 
 `docs/telemetry.md` describes the local-only `orchestra_telemetry_v1` collector.
-It parses allowlisted post-run usage events without adding model requests,
-workers, prompts, or context. It is not installed or enabled by default and does
-not change orchestration routing.
+When this policy is installed, `hooks.json` adds fail-open lifecycle hooks that
+create and finalize runs automatically from exact Codex session identifiers.
+They parse allowlisted usage metadata without adding model requests, workers,
+prompts, or context, preserve existing user hooks, and do not change
+orchestration routing. Review and trust the installed hook once in Codex's
+`/hooks` interface; set `CODEX_ORCHESTRA_TELEMETRY=0` for a run-level escape
+hatch.

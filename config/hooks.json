@@ -1,0 +1,65 @@
+{
+  "description": "CODEX ORCHESTRA TELEMETRY V1 lifecycle hooks",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook",
+            "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

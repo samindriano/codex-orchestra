@@ -2,17 +2,21 @@
 
 Telemetry V1 is an optional, local-only metadata ledger. It is not part of the
 model prompt, does not ask the root or a worker to report usage, and does not
-launch a telemetry worker. Normal collection is deterministic Python executed
-before/after a task or after a rollout has ended.
+launch a telemetry worker. The automatic path is a Codex lifecycle command hook:
+`SessionStart` creates a run, `SubagentStart`/`SubagentStop` observe workers,
+`Interrupt` records an interruption, and `SessionEnd` ingests the exact
+transcript path and finalizes the run. Manual commands remain available for
+legacy or explicitly controlled observations.
 
 ## Privacy and overhead contract
 
 The collector stores explicit short labels and structural metadata only. It does
 not persist prompts, responses, tool arguments, tool outputs, source contents,
-secrets, environment values, or full paths. Session ingestion scans one explicit
-regular file and JSON-decodes only allowlisted `token_usage_record` lines. Other
-JSONL records are skipped as bytes; their content is not fed into a model or
-written to the ledger.
+secrets, environment values, transcript paths, or full project paths. Session
+ingestion scans one explicit regular file, JSON-decodes only allowlisted
+`token_usage_record` lines, and extracts only scalar model/effort metadata from
+`turn_context` lines. Other JSONL records are skipped as bytes; their content is
+not fed into a model or written to the ledger.
 
 The normal measured-run target is:
 
@@ -44,11 +48,17 @@ payload.thread_token_usage.*
 
 The numeric usage fields are input, cached input, cache-write input, output,
 reasoning output, and total tokens. The collector uses the latest
-`thread_token_usage` as the session total and counts observed usage events as a
-machine-readable request count. If no usage event is available, values remain
-`null`; they are never changed to zero. Root/worker attribution is only
-`DECLARED` when the launcher supplies explicit metadata. Otherwise it remains
-`UNKNOWN`.
+`thread_token_usage` per exact transcript and aggregates independent root/worker
+observations. If no usage event is available, values remain `null`; they are
+never changed to zero. Automatic root/worker attribution is
+`ROOT_WORKER_USAGE_PARTIAL`: root and worker transcript paths are bound by
+lifecycle-provided session IDs, but Codex does not expose a complete stable
+profile/mode/worker inventory in one metadata record.
+
+The hook input exposes the active model slug. Reasoning effort is recovered from
+the allowlisted scalar `turn_context.effort` field. Profile name and orchestra
+mode remain `UNKNOWN` unless a future Codex hook exposes them; model and effort
+are open strings, so future model names require no schema change.
 
 ## Storage and record lifecycle
 
@@ -65,16 +75,25 @@ The canonical codex-orchestra installer has one explicit telemetry mapping:
 ```text
 scripts/orchestra_telemetry.py
     -> CODEX_HOME/scripts/orchestra_telemetry.py
+config/hooks.json
+    -> CODEX_HOME/hooks.json (merged with existing user hooks)
 ```
 
-No other repository scripts are copied. The collector remains optional and is
-not imported by Codex startup.
+No other repository scripts are copied. Hook execution is still optional: Codex
+requires a one-time review/trust decision for non-managed user hooks. The hook
+checks `CODEX_ORCHESTRA_TELEMETRY`; values `0`, `false`, `off`, `disabled`, and
+`no` make it return without creating or changing a ledger.
 
 Records are append-only events folded into a run view:
 
 - `run_start` — task label/class/complexity, explicit orchestra metadata, and
   unknown-safe initial fields;
-- `usage_observed` — synthetic usage or allowlisted post-run session usage;
+- `usage_observed` — synthetic usage or allowlisted root/worker usage from an
+  exact hook transcript path;
+- `metadata_observed` — model, effort, project, and other allowlisted runtime
+  metadata;
+- `worker_observed` — exact lifecycle worker identity/model/effort when exposed;
+- `interruption_observed` — a structured interruption marker without content;
 - `run_finalize` — timing, exit/validation fields, and completion state;
 - `allowance_snapshot` — explicit before/after subscription snapshots;
 - `annotation` — reviewer/first-pass/rework and successor lineage;
@@ -108,10 +127,12 @@ python scripts/orchestra_telemetry.py --store $store ingest `
   --run-id $run --session-file $env:CODEX_ROLLOUT_JSONL
 ```
 
-No V1 command is on Codex's execution path. A future launcher must invoke
-`create`/`finalize` best-effort and preserve the task's exit status; chaining a
-telemetry command as a hard `&&` prerequisite would violate the fail-open
-contract.
+The automatic hook command is best-effort and fail-open. It emits no stdout,
+never blocks a model request with a prompt, and swallows collector failures so a
+corrupt ledger or unavailable transcript cannot break raw Codex usage. Exact
+session/transcript correlation is required; a mismatched session ID is not
+ingested. A terminal crash or forced process kill that emits no lifecycle hook
+remains an explicit coverage blind spot.
 
 For development, `ingest-synthetic` creates a fully deterministic usage event
 without any session file or model call. `snapshot` records explicit allowance
@@ -136,9 +157,10 @@ python -m py_compile scripts/orchestra_telemetry.py tests/test_orchestra_telemet
 git diff --check
 ```
 
-Tests cover telemetry-off isolation, zero-model synthetic collection, content
-non-persistence, unknown-safe missing usage, duplicate and corruption handling,
-offline deterministic reporting, allowance/manual separation, concurrent writes,
-and the absence of model/network/worker runtime calls. Installation is not
-changed by this feature; use an isolated temporary `CODEX_HOME` for any future
-installer integration test.
+Tests cover telemetry-off isolation, automatic lifecycle create/ingest/finalize,
+future model strings, exact correlation, worker aggregation, interruption
+retention, content non-persistence, unknown-safe missing usage, duplicate and
+corruption handling, offline deterministic reporting, allowance/manual
+separation, concurrent writes, hook merge/idempotence, and the absence of
+model/network/worker runtime calls. Validate installation in an isolated
+temporary `CODEX_HOME` before applying it to a real home.

@@ -35,6 +35,7 @@ _SOURCE_DESTINATIONS = (
     # target.  It is intentionally not a skill or a profile and is not
     # imported by normal Codex startup unless a user invokes it.
     ("scripts/orchestra_telemetry.py", "scripts/orchestra_telemetry.py", "text"),
+    ("config/hooks.json", "hooks.json", "hooks"),
     (
         "skills/astra-decision-orchestrator/SKILL.md",
         "skills/astra-decision-orchestrator/SKILL.md",
@@ -80,6 +81,7 @@ _ROLE_CONFIG_PATHS = {
     ("agents", "explorer", "config_file"): "./agents/explorer.toml",
 }
 _CONTEXT_PATH = ("features", "context_management", "experimental_mode")
+_TELEMETRY_HOOK_EVENTS = ("SessionStart", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
 _SECTION_RE = re.compile(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?(?:\r?\n)?$")
 _ASSIGNMENT_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.*?)(\r?\n)?$")
 
@@ -108,6 +110,96 @@ def _toml_source(path: Path, data: bytes | None = None) -> dict[str, Any]:
         return tomllib.loads((data if data is not None else path.read_bytes()).decode("utf-8"))
     except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         raise PolicyError(f"invalid TOML {path}: {exc}") from exc
+
+
+def _json_source(path: Path, data: bytes | None = None) -> dict[str, Any]:
+    try:
+        parsed = json.loads((data if data is not None else path.read_bytes()).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PolicyError(f"invalid JSON {path}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise PolicyError(f"hooks source must be a JSON object: {path}")
+    return parsed
+
+
+def _validate_hooks(data: dict[str, Any], path: Path) -> None:
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        raise PolicyError(f"{path} lacks a hooks object")
+    for event in _TELEMETRY_HOOK_EVENTS:
+        groups = hooks.get(event)
+        if not isinstance(groups, list) or not groups:
+            raise PolicyError(f"{path} lacks telemetry hook event {event}")
+        if not any(_is_telemetry_handler(handler) for group in groups if isinstance(group, dict) for handler in group.get("hooks", []) if isinstance(group.get("hooks"), list)):
+            raise PolicyError(f"{path} lacks a telemetry command for {event}")
+
+
+def _is_telemetry_handler(value: Any) -> bool:
+    if not isinstance(value, dict) or value.get("type") != "command":
+        return False
+    command = value.get("command")
+    windows = value.get("command_windows") or value.get("commandWindows")
+    return (
+        isinstance(command, str)
+        and "orchestra_telemetry.py\" hook" in command
+        and isinstance(windows, str)
+        and "orchestra_telemetry.py\\scripts" not in windows
+        and "orchestra_telemetry.py\" hook" in windows
+    )
+
+
+def _render_hook_data(data: dict[str, Any], codex_home: Path) -> dict[str, Any]:
+    rendered = json.loads(json.dumps(data))
+    posix_home = codex_home.as_posix()
+    windows_home = str(codex_home).replace("/", "\\")
+
+    def replace(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: replace(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [replace(child) for child in value]
+        if isinstance(value, str):
+            return value.replace("__CODEX_HOME_POSIX__", posix_home).replace("__CODEX_HOME_WINDOWS__", windows_home)
+        return value
+
+    return replace(rendered)
+
+
+def _merge_hook_data(existing: dict[str, Any], desired: dict[str, Any], path: Path) -> dict[str, Any]:
+    merged = json.loads(json.dumps(existing))
+    existing_hooks = merged.get("hooks")
+    desired_hooks = desired.get("hooks")
+    if existing_hooks is None:
+        existing_hooks = {}
+        merged["hooks"] = existing_hooks
+    if not isinstance(existing_hooks, dict) or not isinstance(desired_hooks, dict):
+        raise PolicyError(f"refusing to overwrite non-object hooks in {path}")
+    for event in _TELEMETRY_HOOK_EVENTS:
+        desired_groups = desired_hooks.get(event, [])
+        groups = existing_hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise PolicyError(f"refusing to overwrite non-list hooks.{event} in {path}")
+        for desired_group in desired_groups:
+            desired_handlers = desired_group.get("hooks", []) if isinstance(desired_group, dict) else []
+            found = False
+            for group in groups:
+                if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                    continue
+                for index, handler in enumerate(group["hooks"]):
+                    if _is_telemetry_handler(handler):
+                        group["hooks"][index] = desired_handlers[0]
+                        found = True
+                        break
+                if found:
+                    break
+            if not found:
+                groups.append(desired_group)
+    return merged
+
+
+def _render_hooks_bytes(source_data: dict[str, Any], codex_home: Path) -> bytes:
+    rendered = _render_hook_data(source_data, codex_home)
+    return (json.dumps(rendered, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
 def _get_path(data: dict[str, Any], path: Iterable[str]) -> Any:
@@ -451,6 +543,9 @@ def _validate_source_tree(source_root: Path) -> list[tuple[Path, Path, str, byte
                     marker="LUNA_WORKER",
                     expected_reasoning=LUNA_REASONING,
                 )
+        elif kind == "hooks":
+            parsed = _json_source(source, data)
+            _validate_hooks(parsed, source)
         planned.append((source, Path(target_rel), kind, data, parsed))
     return planned
 
@@ -476,9 +571,16 @@ def _plan(
             raise PolicyError(f"installed destination is not a file: {target}")
         if target.exists() and kind in {"profile", "role"}:
             _validate_existing_profile(target, parsed or {}, kind)
+        desired = data
+        if kind == "hooks":
+            desired = _render_hooks_bytes(parsed or {}, codex_home)
+            if target.is_file():
+                existing_data = _json_source(target)
+                desired_data = json.loads(desired.decode("utf-8"))
+                desired = (json.dumps(_merge_hook_data(existing_data, desired_data, target), indent=2, sort_keys=True) + "\n").encode("utf-8")
         existing = target.read_bytes() if target.is_file() else None
-        if existing != data:
-            changes.append((source, target, data, kind))
+        if existing != desired:
+            changes.append((source, target, desired, kind))
 
     config_change: tuple[Path, bytes, bytes, dict[str, Any]] | None = None
     config_path = codex_home / "config.toml"
@@ -647,7 +749,21 @@ def verify(
         target = home / target_rel
         if not target.is_file():
             raise PolicyError(f"missing installed file: {target}")
-        if target.read_bytes() != data:
+        if kind == "hooks":
+            expected = _render_hooks_bytes(parsed or {}, home)
+            actual = _json_source(target)
+            desired = _json_source(target, expected)
+            _validate_hooks(actual, target)
+            for event in _TELEMETRY_HOOK_EVENTS:
+                if not any(
+                    _is_telemetry_handler(handler)
+                    and handler == desired["hooks"][event][0]["hooks"][0]
+                    for group in actual["hooks"].get(event, [])
+                    if isinstance(group, dict) and isinstance(group.get("hooks"), list)
+                    for handler in group["hooks"]
+                ):
+                    raise PolicyError(f"telemetry hook mismatch for {event}: {target}")
+        elif target.read_bytes() != data:
             raise PolicyError(f"hash/content mismatch: {target}")
         if kind in {"profile", "role"}:
             expected = (_PROFILE_MODELS if kind == "profile" else _ROLE_MODELS)[Path(source).name]

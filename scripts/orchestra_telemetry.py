@@ -2,9 +2,10 @@
 """Passive, local-only CODEX ORCHESTRA TELEMETRY V1.
 
 The collector is deliberately outside the model loop.  It reads only the
-allowlisted numeric fields of Codex ``token_usage_record`` events after a run
-has finished and stores normalized metadata in an append-only JSONL ledger.
-It never calls Codex, launches workers, or persists conversation content.
+allowlisted numeric fields of Codex ``token_usage_record`` events and the
+allowlisted lifecycle metadata delivered to command hooks.  It stores
+normalized metadata in an append-only JSONL ledger.  It never calls Codex,
+launches workers, or persists conversation content.
 """
 
 from __future__ import annotations
@@ -32,6 +33,9 @@ LOCK_NAME = "ledger.lock"
 RECORD_TYPES = {
     "run_start",
     "usage_observed",
+    "metadata_observed",
+    "worker_observed",
+    "interruption_observed",
     "run_finalize",
     "allowance_snapshot",
     "annotation",
@@ -50,6 +54,8 @@ TASK_CLASSES = {
     "UNKNOWN",
 }
 COMPLEXITIES = {"SMALL", "MEDIUM", "LARGE", "UNKNOWN"}
+PROJECT_KINDS = {"GIT", "NO_PROJECT", "UNKNOWN"}
+MEASUREMENT_SCOPES = {"UNCLASSIFIED", "SUBSTANTIVE", "TRIVIAL", "SYNTHETIC", "EXCLUDED"}
 MEASUREMENT_OVERHEAD = {
     "ZERO_MODEL_OVERHEAD",
     "NEGLIGIBLE_LOCAL_OVERHEAD",
@@ -65,7 +71,11 @@ MEASUREMENT_VALIDITY = {
 # Labels are deliberately path-free.  A caller can provide a normalized project
 # name, but cannot accidentally persist a drive, UNC path, or directory string.
 _LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@_+-]{0,79}$")
+_MODEL_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@+:/-]{0,119}$")
 _TYPE_RE = re.compile(br'^\s*\{.*?"type"\s*:\s*"([^"\\]+)"')
+_TURN_MODEL_RE = re.compile(br'"model"\s*:\s*"([^"\\]*)"')
+_TURN_EFFORT_RE = re.compile(br'"effort"\s*:\s*"([^"\\]*)"')
+_DISABLE_VALUES = {"0", "false", "off", "disabled", "no"}
 
 
 class TelemetryError(RuntimeError):
@@ -103,6 +113,29 @@ def _label(value: str | None, *, field: str, required: bool = False) -> str | No
             "prompt text and paths are not accepted"
         )
     return value
+
+
+def _derived_label(value: str | None, *, fallback: str) -> str:
+    """Turn local metadata into a short path-free label."""
+
+    if not isinstance(value, str):
+        return fallback
+    candidate = re.sub(r"[^A-Za-z0-9_.@+-]+", "-", value.strip()).strip("-")[:80]
+    return candidate or fallback
+
+
+def _model_label(value: str | None, *, field: str) -> str | None:
+    if value is None or value == "":
+        return None
+    if not isinstance(value, str) or not _MODEL_LABEL_RE.fullmatch(value):
+        raise TelemetryError(f"{field} must be a short model identifier")
+    return value
+
+
+def telemetry_enabled() -> bool:
+    """Return whether automatic hooks are enabled for this process."""
+
+    return os.environ.get("CODEX_ORCHESTRA_TELEMETRY", "1").strip().lower() not in _DISABLE_VALUES
 
 
 def _enum(value: str | None, allowed: set[str], *, field: str, default: str = "UNKNOWN") -> str:
@@ -242,7 +275,10 @@ def _allowed_fields(record_type: str) -> set[str]:
     common = {"schema", "record_type", "record_id", "recorded_at_utc"}
     fields = {
         "run_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "execution", "result", "economics", "measurement"},
-        "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "session_id", "thread_id", "usage", "observed_event_count", "measurement"},
+        "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "session_id", "thread_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement"},
+        "metadata_observed": {"run_id", "source_kind", "root_model", "root_reasoning_effort", "profile", "orchestra_mode", "project_kind", "project_label", "measurement_quality"},
+        "worker_observed": {"run_id", "worker_id", "agent_type", "model", "reasoning_effort", "launch_status", "measurement_quality"},
+        "interruption_observed": {"run_id", "session_id", "thread_id", "reason", "measurement_quality"},
         "run_finalize": {"run_id", "ended_at_utc", "usage", "execution", "result", "measurement"},
         "allowance_snapshot": {"run_id", "snapshot_kind", "source", "measurement_quality", "five_hour_allowance_pp", "weekly_allowance_pp", "credit_balance", "captured_at_utc"},
         "annotation": {"run_id", "reviewer_verdict", "first_pass", "rework_required", "rework_reason_code", "successor_run_id", "measurement_quality"},
@@ -397,6 +433,8 @@ def create_run(
     project_label: str | None = None,
     task_class: str = "UNKNOWN",
     complexity: str = "UNKNOWN",
+    project_kind: str = "UNKNOWN",
+    measurement_scope: str = "UNCLASSIFIED",
     mode: str = "UNKNOWN",
     root_model: str | None = None,
     root_reasoning_effort: str | None = None,
@@ -411,17 +449,19 @@ def create_run(
         "task_id": _label(task_id, field="task_id"),
         "task_label": _label(task_label, field="task_label", required=True),
         "project_label": _label(project_label, field="project_label"),
+        "project_kind": _enum(project_kind, PROJECT_KINDS, field="project_kind"),
         "task_class": _enum(task_class, TASK_CLASSES, field="task_class"),
         "complexity": _enum(complexity, COMPLEXITIES, field="complexity"),
+        "measurement_scope": _enum(measurement_scope, MEASUREMENT_SCOPES, field="measurement_scope"),
     }
-    root = {"model": _label(root_model, field="root_model"), "reasoning_effort": _label(root_reasoning_effort, field="root_reasoning_effort")}
+    root = {"model": _model_label(root_model, field="root_model"), "reasoning_effort": _label(root_reasoning_effort, field="root_reasoning_effort")}
     worker_list: list[dict[str, Any]] = []
     for index, worker in enumerate(workers):
         if not isinstance(worker, dict):
             raise TelemetryError("worker descriptor must be an object")
         worker_list.append({
             "ordinal": index,
-            "model": _label(worker.get("model"), field="worker.model"),
+            "model": _model_label(worker.get("model"), field="worker.model"),
             "reasoning_effort": _label(worker.get("reasoning_effort"), field="worker.reasoning_effort"),
             "launch_status": _enum(str(worker.get("launch_status", "UNKNOWN")), {"LAUNCHED", "COMPLETED", "CANCELLED", "FAILED", "UNKNOWN"}, field="worker.launch_status"),
         })
@@ -471,6 +511,8 @@ class UsageObservation:
     thread_id: str | None
     usage: dict[str, int | None]
     observed_event_count: int
+    model: str | None = None
+    reasoning_effort: str | None = None
 
 
 def _event_kind(line: bytes) -> str | None:
@@ -494,11 +536,27 @@ def parse_session_usage(path: Path | str) -> UsageObservation:
     session_id: str | None = None
     thread_id: str | None = None
     latest: dict[str, Any] | None = None
+    model: str | None = None
+    reasoning_effort: str | None = None
     with source.open("rb") as handle:
         for line_number, line in enumerate(handle, 1):
             bytes_read += len(line)
             digest.update(line)
-            if _event_kind(line) != "token_usage_record":
+            event_kind = _event_kind(line)
+            if event_kind == "turn_context":
+                # The rollout wire format contains other prompt-adjacent
+                # fields on this line.  Extract only the two allowlisted
+                # scalar metadata values without JSON-decoding that content.
+                if model is None:
+                    match = _TURN_MODEL_RE.search(line)
+                    if match:
+                        model = _model_label(match.group(1).decode("utf-8", errors="ignore"), field="turn_context.model")
+                if reasoning_effort is None:
+                    match = _TURN_EFFORT_RE.search(line)
+                    if match:
+                        reasoning_effort = _label(match.group(1).decode("utf-8", errors="ignore"), field="turn_context.effort")
+                continue
+            if event_kind != "token_usage_record":
                 continue
             try:
                 event = json.loads(line.decode("utf-8"))
@@ -529,10 +587,21 @@ def parse_session_usage(path: Path | str) -> UsageObservation:
         thread_id=thread_id,
         usage=observed_usage,
         observed_event_count=event_count,
+        model=model,
+        reasoning_effort=reasoning_effort,
     )
 
 
-def ingest_usage(store: TelemetryStore, run_id: str, observation: UsageObservation, *, source_kind: str = "CODEX_ROLLOUT_JSONL", source_schema: str = "codex_rollout_jsonl") -> dict[str, Any]:
+def ingest_usage(
+    store: TelemetryStore,
+    run_id: str,
+    observation: UsageObservation,
+    *,
+    source_kind: str = "CODEX_ROLLOUT_JSONL",
+    source_schema: str = "codex_rollout_jsonl",
+    attribution_role: str = "ROOT",
+    worker_id: str | None = None,
+) -> dict[str, Any]:
     store.run_records(run_id)
     record = _record(
         "usage_observed",
@@ -542,6 +611,8 @@ def ingest_usage(store: TelemetryStore, run_id: str, observation: UsageObservati
         source_digest=observation.source_digest,
         session_id=_label(observation.session_id, field="session_id"),
         thread_id=_label(observation.thread_id, field="thread_id"),
+        attribution_role=_enum(attribution_role, {"ROOT", "WORKER", "UNKNOWN"}, field="attribution_role"),
+        worker_id=_label(worker_id, field="worker_id"),
         usage=observation.usage,
         observed_event_count=observation.observed_event_count,
         measurement=_measurement(
@@ -566,11 +637,315 @@ def ingest_synthetic_usage(store: TelemetryStore, run_id: str, values: dict[str,
         source_digest=hashlib.sha256((run_id + ":" + json.dumps(usage, sort_keys=True)).encode("utf-8")).hexdigest(),
         session_id=None,
         thread_id=None,
+        attribution_role="UNKNOWN",
+        worker_id=None,
         usage=usage,
         observed_event_count=usage["model_requests"],
         measurement=_measurement(collector_wall_ms=0.0, collector_cpu_ms=0.0, bytes_read=0),
     )
     return store.append(record, unique_source_digest=True)
+
+
+def _aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, int | None]:
+    """Sum independent root/worker observations without treating missing data as zero."""
+
+    usages = [record.get("usage") for record in records if isinstance(record.get("usage"), dict)]
+    if not usages:
+        return _usage()
+    result: dict[str, int | None] = {}
+    for field in (
+        "model_requests",
+        "input_tokens",
+        "cached_input_tokens",
+        "cache_write_input_tokens",
+        "output_tokens",
+        "reasoning_output_tokens",
+        "total_tokens",
+    ):
+        values = [usage.get(field) for usage in usages]
+        result[field] = sum(values) if all(isinstance(value, int) and not isinstance(value, bool) for value in values) else None
+    return result
+
+
+def observe_metadata(
+    store: TelemetryStore,
+    run_id: str,
+    *,
+    source_kind: str,
+    root_model: str | None = None,
+    root_reasoning_effort: str | None = None,
+    profile: str | None = None,
+    orchestra_mode: str | None = None,
+    project_kind: str | None = None,
+    project_label: str | None = None,
+    measurement_quality: str = "EXACT_MACHINE_READABLE",
+) -> dict[str, Any]:
+    store.run_records(run_id)
+    return store.append(_record(
+        "metadata_observed",
+        run_id=run_id,
+        source_kind=_label(source_kind, field="source_kind", required=True),
+        root_model=_model_label(root_model, field="root_model"),
+        root_reasoning_effort=_label(root_reasoning_effort, field="root_reasoning_effort"),
+        profile=_label(profile, field="profile"),
+        orchestra_mode=_enum(orchestra_mode, MODES, field="orchestra_mode") if orchestra_mode else None,
+        project_kind=_enum(project_kind, PROJECT_KINDS, field="project_kind") if project_kind else None,
+        project_label=_label(project_label, field="project_label"),
+        measurement_quality=_label(measurement_quality, field="measurement_quality", required=True),
+    ))
+
+
+def observe_worker(
+    store: TelemetryStore,
+    run_id: str,
+    *,
+    worker_id: str,
+    agent_type: str | None = None,
+    model: str | None = None,
+    reasoning_effort: str | None = None,
+    launch_status: str = "UNKNOWN",
+    measurement_quality: str = "EXACT_MACHINE_READABLE",
+) -> dict[str, Any]:
+    store.run_records(run_id)
+    return store.append(_record(
+        "worker_observed",
+        run_id=run_id,
+        worker_id=_label(worker_id, field="worker_id", required=True),
+        agent_type=_label(agent_type, field="agent_type"),
+        model=_model_label(model, field="worker.model"),
+        reasoning_effort=_label(reasoning_effort, field="worker.reasoning_effort"),
+        launch_status=_enum(launch_status, {"LAUNCHED", "COMPLETED", "CANCELLED", "FAILED", "UNKNOWN"}, field="worker.launch_status"),
+        measurement_quality=_label(measurement_quality, field="measurement_quality", required=True),
+    ))
+
+
+def observe_interruption(
+    store: TelemetryStore,
+    run_id: str,
+    *,
+    session_id: str | None,
+    thread_id: str | None,
+    reason: str = "INTERRUPTED",
+) -> dict[str, Any]:
+    store.run_records(run_id)
+    return store.append(_record(
+        "interruption_observed",
+        run_id=run_id,
+        session_id=_label(session_id, field="session_id"),
+        thread_id=_label(thread_id, field="thread_id"),
+        reason=_label(reason, field="reason", required=True),
+        measurement_quality="EXACT_MACHINE_READABLE",
+    ))
+
+
+def _project_metadata(cwd: str | None) -> tuple[str, str | None]:
+    """Derive a path-free project label without invoking a shell or Git."""
+
+    if not isinstance(cwd, str) or not cwd:
+        return "UNKNOWN", None
+    try:
+        candidate = Path(cwd).expanduser().resolve()
+    except (OSError, RuntimeError):
+        return "UNKNOWN", None
+    if not candidate.exists() or not candidate.is_dir():
+        return "UNKNOWN", None
+    for directory in (candidate, *candidate.parents):
+        if (directory / ".git").exists():
+            return "GIT", _derived_label(directory.name, fallback="git-project")
+    return "NO_PROJECT", None
+
+
+def _hook_run_candidates(store: TelemetryStore, session_id: str) -> list[tuple[str, bool]]:
+    records = store.read()
+    finalized_run_ids = {
+        record.get("run_id")
+        for record in records
+        if record.get("record_type") == "run_finalize" and isinstance(record.get("run_id"), str)
+    }
+    candidates: list[tuple[str, bool]] = []
+    for record in records:
+        if record.get("record_type") != "run_start":
+            continue
+        task = record.get("task")
+        if isinstance(task, dict) and task.get("task_id") == session_id:
+            run_id = record.get("run_id")
+            if isinstance(run_id, str):
+                candidates.append((run_id, run_id in finalized_run_ids))
+    return candidates
+
+
+def _ensure_automatic_run(store: TelemetryStore, event: dict[str, Any]) -> str:
+    session_id = event.get("session_id")
+    if not isinstance(session_id, str) or not session_id:
+        raise TelemetryError("hook event lacks session_id")
+    candidates = _hook_run_candidates(store, session_id)
+    for run_id, finalized in reversed(candidates):
+        if not finalized:
+            return run_id
+    # A duplicate SessionEnd is an expected delivery/retry shape.  Bind it to
+    # the already-finalized exact session instead of creating a second run.
+    if event.get("hook_event_name") == "SessionEnd" and candidates:
+        return candidates[-1][0]
+    project_kind, project_label = _project_metadata(event.get("cwd"))
+    base = _derived_label(f"auto_{session_id}", fallback="auto-session")
+    run_id = base if not candidates else f"{base}_{len(candidates) + 1}"
+    try:
+        create_run(
+            store,
+            run_id=run_id,
+            task_id=session_id,
+            task_label="codex-session",
+            project_label=project_label,
+            project_kind=project_kind,
+            measurement_scope="UNCLASSIFIED",
+            root_model=_model_label(event.get("model"), field="hook.model"),
+            mode="UNKNOWN",
+        )
+    except DuplicateRecordError:
+        # Two lifecycle events for the same session can arrive concurrently.
+        # Re-read the ledger and bind to the already-created exact run.
+        for candidate, finalized in reversed(_hook_run_candidates(store, session_id)):
+            if not finalized:
+                return candidate
+        raise
+    return run_id
+
+
+def _event_path(event: dict[str, Any], field: str) -> Path | None:
+    value = event.get(field)
+    if not isinstance(value, str) or not value:
+        return None
+    return Path(value).expanduser()
+
+
+def _observe_rollout(
+    store: TelemetryStore,
+    run_id: str,
+    path: Path | None,
+    *,
+    attribution_role: str,
+    worker_id: str | None = None,
+    expected_session_id: str | None = None,
+) -> UsageObservation | None:
+    if path is None:
+        return None
+    observation = parse_session_usage(path)
+    if expected_session_id and observation.session_id != expected_session_id:
+        raise SessionParseError("hook transcript session_id does not match lifecycle session_id")
+    try:
+        ingest_usage(
+            store,
+            run_id,
+            observation,
+            source_kind="CODEX_HOOK_EVENT",
+            attribution_role=attribution_role,
+            worker_id=worker_id,
+        )
+    except DuplicateRecordError as exc:
+        if "source has already been ingested" not in str(exc):
+            raise
+    return observation
+
+
+def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str, Any]:
+    """Handle one Codex lifecycle hook event without emitting hook output."""
+
+    if not telemetry_enabled():
+        return {"status": "DISABLED"}
+    if not isinstance(event, dict):
+        raise TelemetryError("hook input must be an object")
+    event_name = event.get("hook_event_name")
+    session_id = event.get("session_id")
+    if not isinstance(event_name, str) or not isinstance(session_id, str):
+        raise TelemetryError("hook input lacks event name or session_id")
+    run_id = _ensure_automatic_run(store, event)
+    if event_name == "SessionStart":
+        observe_metadata(
+            store,
+            run_id,
+            source_kind="CODEX_HOOK_EVENT",
+            root_model=_model_label(event.get("model"), field="hook.model"),
+            project_kind=_project_metadata(event.get("cwd"))[0],
+            project_label=_project_metadata(event.get("cwd"))[1],
+        )
+        return {"status": "STARTED", "run_id": run_id}
+    if event_name == "SubagentStart":
+        worker_id = event.get("agent_id") or _derived_label(event.get("agent_type"), fallback="unknown-worker")
+        observe_worker(
+            store,
+            run_id,
+            worker_id=_derived_label(worker_id, fallback="unknown-worker"),
+            agent_type=_derived_label(event.get("agent_type"), fallback="unknown") if event.get("agent_type") else None,
+            model=_model_label(event.get("model"), field="hook.model"),
+            launch_status="LAUNCHED",
+        )
+        return {"status": "WORKER_STARTED", "run_id": run_id}
+    if event_name == "SubagentStop":
+        path = _event_path(event, "agent_transcript_path")
+        observation = _observe_rollout(
+            store,
+            run_id,
+            path,
+            attribution_role="WORKER",
+            worker_id=event.get("agent_id"),
+            expected_session_id=session_id,
+        )
+        worker_id = event.get("agent_id") or (observation.thread_id if observation else None) or "unknown-worker"
+        observe_worker(
+            store,
+            run_id,
+            worker_id=_derived_label(worker_id, fallback="unknown-worker"),
+            agent_type=_derived_label(event.get("agent_type"), fallback="unknown") if event.get("agent_type") else None,
+            model=_model_label(observation.model if observation else event.get("model"), field="hook.model"),
+            reasoning_effort=observation.reasoning_effort if observation else None,
+            launch_status="COMPLETED" if observation else "UNKNOWN",
+        )
+        return {"status": "WORKER_STOPPED", "run_id": run_id}
+    if event_name == "Interrupt":
+        observe_interruption(
+            store,
+            run_id,
+            session_id=session_id,
+            thread_id=event.get("turn_id"),
+            reason="INTERRUPTED",
+        )
+        return {"status": "INTERRUPTED", "run_id": run_id}
+    if event_name == "SessionEnd":
+        existing_records = store.run_records(run_id)
+        if any(record.get("record_type") == "run_finalize" for record in existing_records):
+            return {
+                "status": "FINALIZED",
+                "run_id": run_id,
+                "usage_observed": any(
+                    record.get("record_type") == "usage_observed"
+                    and record.get("attribution_role") == "ROOT"
+                    for record in existing_records
+                ),
+            }
+        path = _event_path(event, "transcript_path")
+        observation = _observe_rollout(store, run_id, path, attribution_role="ROOT", expected_session_id=session_id)
+        observe_metadata(
+            store,
+            run_id,
+            source_kind="CODEX_HOOK_EVENT",
+            root_model=_model_label(observation.model if observation else event.get("model"), field="hook.model"),
+            root_reasoning_effort=observation.reasoning_effort if observation else None,
+        )
+        records = store.run_records(run_id)
+        usage = _aggregate_usage(record for record in records if record.get("record_type") == "usage_observed")
+        interruptions = [record for record in records if record.get("record_type") == "interruption_observed"]
+        try:
+            finalize_run(
+                store,
+                run_id,
+                usage=usage,
+                execution={"session_count": 1, "abnormal_termination": "INTERRUPTED" if interruptions else None},
+                result={"completed": False if interruptions else True},
+            )
+        except DuplicateRecordError:
+            pass
+        return {"status": "FINALIZED", "run_id": run_id, "usage_observed": observation is not None}
+    return {"status": "IGNORED", "run_id": run_id, "event": event_name}
 
 
 def finalize_run(store: TelemetryStore, run_id: str, *, ended_at_utc: str | None = None, usage: dict[str, Any] | None = None, execution: dict[str, Any] | None = None, result: dict[str, Any] | None = None, measurement: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -583,7 +958,9 @@ def finalize_run(store: TelemetryStore, run_id: str, *, ended_at_utc: str | None
     final_result = _empty_result()
     if result:
         final_result.update(result)
-    final_usage = _usage(usage)
+    final_usage = _usage(usage) if usage is not None else _aggregate_usage(
+        record for record in records if record.get("record_type") == "usage_observed"
+    )
     final_measurement = measurement or _measurement(collector_wall_ms=0.0, collector_cpu_ms=0.0)
     record = _record(
         "run_finalize",
@@ -671,11 +1048,37 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     run = json.loads(json.dumps(start))
     snapshots: list[dict[str, Any]] = []
     annotations: list[dict[str, Any]] = []
+    workers: dict[str, dict[str, Any]] = {}
+    usage_records: list[dict[str, Any]] = []
     for record in records:
         kind = record["record_type"]
         if kind == "usage_observed":
-            run["usage"] = record["usage"]
+            usage_records.append(record)
+            run["usage"] = _aggregate_usage(usage_records)
             run["measurement"] = record["measurement"]
+        elif kind == "metadata_observed":
+            if record.get("root_model") is not None:
+                run["orchestra"]["root"]["model"] = record["root_model"]
+            if record.get("root_reasoning_effort") is not None:
+                run["orchestra"]["root"]["reasoning_effort"] = record["root_reasoning_effort"]
+            if record.get("profile") is not None:
+                run["orchestra"]["root"]["profile"] = record["profile"]
+            if record.get("orchestra_mode") is not None:
+                run["orchestra"]["mode"] = record["orchestra_mode"]
+            if record.get("project_kind") is not None:
+                run["task"]["project_kind"] = record["project_kind"]
+            if record.get("project_label") is not None:
+                run["task"]["project_label"] = record["project_label"]
+        elif kind == "worker_observed":
+            workers[record["worker_id"]] = {
+                "worker_id": record["worker_id"],
+                "agent_type": record.get("agent_type"),
+                "model": record.get("model"),
+                "reasoning_effort": record.get("reasoning_effort"),
+                "launch_status": record.get("launch_status", "UNKNOWN"),
+            }
+        elif kind == "interruption_observed":
+            run["execution"]["abnormal_termination"] = record.get("reason", "INTERRUPTED")
         elif kind == "run_finalize":
             run["ended_at_utc"] = record["ended_at_utc"]
             run["usage"] = record["usage"]
@@ -686,6 +1089,14 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
             snapshots.append(record)
         elif kind == "annotation":
             annotations.append(record)
+    if workers:
+        run["orchestra"]["workers"] = list(workers.values())
+        run["orchestra"]["actual_worker_count"] = len(workers)
+        run["orchestra"]["attribution_quality"] = "ROOT_WORKER_USAGE_PARTIAL"
+        run["orchestra"]["attribution_source"] = "CODEX_LIFECYCLE_HOOKS"
+    elif any(record.get("source_kind") == "CODEX_HOOK_EVENT" for record in records):
+        run["orchestra"]["attribution_quality"] = "ROOT_WORKER_USAGE_PARTIAL"
+        run["orchestra"]["attribution_source"] = "CODEX_LIFECYCLE_HOOKS"
     weekly_pairs = [s for s in snapshots if s.get("weekly_allowance_pp") is not None]
     five_pairs = [s for s in snapshots if s.get("five_hour_allowance_pp") is not None]
     run["economics"] = {
@@ -816,6 +1227,7 @@ def _parser() -> argparse.ArgumentParser:
     ingest = sub.add_parser("ingest")
     ingest.add_argument("--run-id", required=True)
     ingest.add_argument("--session-file", required=True)
+    sub.add_parser("hook", help="consume one Codex lifecycle hook JSON object from stdin")
     synthetic = sub.add_parser("ingest-synthetic")
     synthetic.add_argument("--run-id", required=True)
     for name in ("model-requests", "input-tokens", "cached-input-tokens", "cache-write-input-tokens", "output-tokens", "reasoning-output-tokens", "total-tokens"):
@@ -876,6 +1288,15 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     store = TelemetryStore(args.store)
     try:
+        if args.command == "hook":
+            # Hooks are advisory and fail-open.  Never write hook output to
+            # stdout because Codex treats it as model-visible context.
+            try:
+                payload = json.load(sys.stdin)
+                handle_hook_event(store, payload)
+            except Exception:
+                pass
+            return 0
         if args.command == "create":
             workers = []
             for descriptor in args.worker:
