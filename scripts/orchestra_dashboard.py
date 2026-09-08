@@ -33,7 +33,7 @@ except ModuleNotFoundError:  # Import from the repository test package.
 
 
 DASHBOARD_SCHEMA = "orchestra_dashboard_v1"
-DASHBOARD_VERSION = "1.0"
+DASHBOARD_VERSION = "1.1"
 SESSION_LEVEL = "SESSION_LEVEL_V1"
 USAGE_QUALITIES = {"EXACT", "PARTIAL", "UNKNOWN"}
 SPEED_MODES = {"FAST", "STANDARD", "UNKNOWN"}
@@ -198,7 +198,9 @@ def _worker_summary(orchestra: dict[str, Any]) -> tuple[list[dict[str, Any]], st
         workers.append({
             "worker_id": _safe_label(raw.get("worker_id")),
             "model": _safe_model(raw.get("model")),
+            "reasoning_effort": _safe_label(raw.get("reasoning_effort")),
             "status": _safe_label(raw.get("launch_status")),
+            "usage_source": _safe_label(raw.get("usage_source")),
             "usage_quality": quality,
             "total_tokens": total if quality == "EXACT" else None,
         })
@@ -241,21 +243,39 @@ def _turn_row(run: dict[str, Any]) -> dict[str, Any]:
     return {
         "run_id": _safe_label(run.get("run_id")),
         "turn_id": _safe_label(run.get("turn_id")),
+        "session_id": _safe_label(run.get("session_id")),
+        "thread_id": _safe_label(run.get("thread_id")),
         "timestamp": _safe_timestamp(run.get("started_at_utc")),
         "ended_at_utc": _safe_timestamp(run.get("ended_at_utc")),
         "project": project,
         "worktree": worktree,
         "model": _safe_model(root.get("model")),
+        "reasoning_effort": _safe_label(root.get("reasoning_effort")),
+        "reasoning_effort_source": _safe_label(run.get("reasoning_effort_source")),
+        "profile": _safe_label(root.get("profile")),
         "speed_mode": speed,
         "speed_mode_source": speed_source,
         "speed_certified": speed_certified,
         "duration_seconds": _nonnegative_number(execution.get("wall_clock_seconds")),
+        "root_wall_seconds": _nonnegative_number(execution.get("root_wall_seconds")),
+        "worker_wall_seconds": _nonnegative_number(execution.get("worker_wall_seconds")),
         "status": _status(run),
+        "turn_status": _safe_label(run.get("turn_status")),
+        "measurement_generation": _safe_label(run.get("measurement_generation")),
+        "usage_source": _safe_label(run.get("usage_source")),
+        "attribution_source": _safe_label(orchestra.get("attribution_source")),
+        "attribution_quality": _safe_label(orchestra.get("attribution_quality")),
+        "orchestra_mode": _safe_label(orchestra.get("mode")),
         "usage_quality": quality,
         "root_usage_quality": quality,
         "worker_usage_quality": worker_quality,
         "orchestra_usage_quality": orchestra_quality,
         "worker_count": _nonnegative_int(orchestra.get("actual_worker_count")),
+        "max_concurrency": _nonnegative_int(orchestra.get("max_concurrency")),
+        "workers_started": _nonnegative_int(orchestra.get("workers_started")),
+        "workers_completed": _nonnegative_int(orchestra.get("workers_completed")),
+        "workers_cancelled": _nonnegative_int(orchestra.get("workers_cancelled")),
+        "workers_failed": _nonnegative_int(orchestra.get("workers_failed")),
         "root_model": _safe_model(root.get("model")),
         "input_tokens": input_tokens,
         "cached_input_tokens": cached_input,
@@ -491,7 +511,7 @@ def _json_for_html(value: Any) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":")).replace("</", "<\\/")
 
 
-def build_html(snapshot: dict[str, Any], *, live: bool = False) -> str:
+def _legacy_build_html(snapshot: dict[str, Any], *, live: bool = False) -> str:
     """Render a self-contained report with no external assets or connections."""
 
     payload = _json_for_html(snapshot)
@@ -561,6 +581,647 @@ function render(){{const rows=filtered();renderCards(rows);renderCharts(rows);re
 if(!LIVE_MODE){{document.getElementById('refreshNow').disabled=true;document.getElementById('autoRefresh').disabled=true;refreshMeta('static report');}}else{{refreshMeta();setAutoRefresh();refreshData();}}
 render();
 </script></main></body></html>'''
+
+
+def build_html(snapshot: dict[str, Any], *, live: bool = False) -> str:
+    """Render the polished single-file dashboard without adding data semantics."""
+
+    payload = _json_for_html(snapshot)
+    template = r"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestra telemetry dashboard</title>
+<style>
+:root {
+  --bg: #080b10;
+  --bg-soft: #0d1219;
+  --panel: #111821;
+  --panel-strong: #151f2b;
+  --panel-hover: #192536;
+  --line: #23303d;
+  --line-strong: #304254;
+  --text: #edf3f8;
+  --muted: #93a2b1;
+  --faint: #607180;
+  --accent: #70c9ff;
+  --accent-soft: rgba(112, 201, 255, .13);
+  --green: #6ee7ad;
+  --green-soft: rgba(110, 231, 173, .12);
+  --amber: #f3c56b;
+  --amber-soft: rgba(243, 197, 107, .12);
+  --red: #ff8c9a;
+  --red-soft: rgba(255, 140, 154, .12);
+  --purple: #b5a2ff;
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at 78% -10%, rgba(70, 134, 182, .13), transparent 34rem),
+    linear-gradient(180deg, #0a0e14 0%, var(--bg) 36rem);
+  font: 13px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+.app-shell { max-width: 1880px; margin: 0 auto; padding: 22px 28px 42px; }
+.topbar { display: flex; justify-content: space-between; gap: 26px; align-items: flex-start; margin-bottom: 22px; }
+.kicker { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; }
+h1 { margin: 5px 0 4px; font-size: 29px; line-height: 1.05; letter-spacing: -.045em; }
+h1 span { color: var(--accent); }
+.subtitle { color: var(--muted); margin: 0; max-width: 680px; }
+.live-cluster { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; padding: 9px 12px; background: rgba(17, 24, 33, .78); border: 1px solid var(--line); border-radius: 9px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); }
+.live-cluster strong { color: var(--text); font-size: 12px; }
+.tabs { display: flex; align-items: center; gap: 3px; border-bottom: 1px solid var(--line); margin-bottom: 13px; }
+.tab { border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); padding: 11px 15px 10px; font-size: 11px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.filterbar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: end; gap: 9px 14px; padding: 10px 12px; margin-bottom: 18px; background: rgba(13, 18, 25, .92); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(12px); }
+.filter-group { display: flex; align-items: center; gap: 7px; }
+.filter-label { color: var(--faint); font-size: 10px; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
+.segmented { display: flex; gap: 2px; padding: 2px; background: #0a0f15; border: 1px solid var(--line); border-radius: 7px; }
+.segmented button { border: 0; border-radius: 5px; padding: 5px 9px; color: var(--muted); background: transparent; font-size: 11px; }
+.segmented button.active { color: var(--text); background: var(--panel-hover); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.filterbar select, .filterbar input[type="search"] { min-width: 122px; height: 29px; color: var(--text); background: #0a0f15; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; outline: none; }
+.filterbar input[type="search"] { width: 185px; min-width: 150px; }
+.filterbar select:focus, .filterbar input:focus { border-color: var(--accent); }
+.search-wrap { position: relative; }
+.search-wrap span { position: absolute; left: 8px; top: 6px; color: var(--faint); }
+.search-wrap input { padding-left: 25px !important; }
+.filter-spacer { flex: 1; min-width: 14px; }
+.check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+.check input { accent-color: var(--accent); }
+.action { height: 29px; border: 1px solid var(--line-strong); border-radius: 6px; color: var(--text); background: var(--panel-strong); padding: 4px 10px; font-size: 11px; }
+.action:hover { background: var(--panel-hover); border-color: var(--accent); }
+.action.primary { color: #06111a; background: var(--accent); border-color: var(--accent); font-weight: 750; }
+.refresh-state { color: var(--faint); font-size: 11px; white-space: nowrap; }
+.view { display: none; }
+.view.active { display: block; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 23px 0 10px; }
+.section-head h2 { margin: 0; font-size: 14px; letter-spacing: -.01em; }
+.section-head p { margin: 0; color: var(--muted); font-size: 11px; }
+.hero-panel { display: grid; grid-template-columns: minmax(310px, 1.55fr) repeat(5, minmax(112px, .65fr)); gap: 0; min-height: 174px; overflow: hidden; background: linear-gradient(120deg, #15283a 0%, #111b26 52%, #111821 100%); border: 1px solid #2b5069; border-radius: var(--radius); box-shadow: 0 16px 36px rgba(0, 0, 0, .2); }
+.hero-main { padding: 23px 25px; border-right: 1px solid rgba(112, 201, 255, .16); }
+.hero-eyebrow { color: var(--accent); font-size: 10px; font-weight: 800; letter-spacing: .15em; text-transform: uppercase; }
+.hero-title { margin: 11px 0 3px; font-size: 22px; font-weight: 760; letter-spacing: -.035em; }
+.hero-subtitle { color: var(--muted); font-size: 12px; }
+.hero-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 14px; }
+.hero-meta { margin-top: 13px; color: var(--faint); font-size: 11px; }
+.hero-meta strong { color: var(--text); font-weight: 600; }
+.hero-stat { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 17px 15px; border-right: 1px solid rgba(255, 255, 255, .06); }
+.hero-stat:last-child { border-right: 0; }
+.hero-stat .label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.hero-stat .value { font-size: 20px; font-weight: 750; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.hero-stat .hint { color: var(--faint); font-size: 10px; }
+.metric-grid { display: grid; grid-template-columns: repeat(6, minmax(130px, 1fr)); gap: 10px; margin-top: 12px; }
+.metric-card { padding: 14px 15px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+.metric-card .label { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.metric-card .value { display: block; margin-top: 7px; font-size: 21px; font-weight: 750; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.metric-card .detail { display: block; min-height: 16px; margin-top: 4px; color: var(--faint); font-size: 10px; }
+.metric-card.accent { border-color: rgba(112, 201, 255, .38); background: linear-gradient(145deg, rgba(112, 201, 255, .11), var(--panel)); }
+.metric-card.good .value { color: var(--green); }
+.metric-card.warn .value { color: var(--amber); }
+.metric-card.alert .value { color: var(--red); }
+.chart-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 12px; }
+.chart-grid.secondary { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 12px; }
+.panel { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.chart-panel { min-height: 304px; padding: 16px 17px 11px; }
+.chart-panel.large { min-height: 330px; }
+.panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.panel-head h3 { margin: 0; font-size: 13px; letter-spacing: -.01em; }
+.panel-head p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.chart-meta { color: var(--faint); font-size: 10px; white-space: nowrap; }
+.chart { height: 244px; }
+.chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.chart-gridline { stroke: #22303d; stroke-width: 1; stroke-dasharray: 3 5; }
+.chart-axis { stroke: #324352; stroke-width: 1; }
+.chart-label { fill: #778897; font-size: 10px; }
+.chart-line { fill: none; stroke: var(--accent); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.chart-area { fill: url(#areaFill); opacity: .72; }
+.chart-point { fill: var(--accent); stroke: #d6f2ff; stroke-width: 1.4; }
+.chart-point.amber { fill: var(--amber); }
+.chart-point.green { fill: var(--green); }
+.empty-chart { display: grid; place-items: center; height: 215px; padding: 18px; text-align: center; color: var(--muted); border: 1px dashed var(--line-strong); border-radius: 8px; background: rgba(8, 11, 16, .27); }
+.empty-chart strong { display: block; color: var(--text); font-size: 12px; }
+.empty-chart span { display: block; max-width: 330px; margin-top: 5px; color: var(--faint); font-size: 11px; }
+.view-toolbar { display: flex; align-items: center; gap: 12px; margin: 0 0 10px; color: var(--muted); font-size: 11px; }
+.view-toolbar strong { color: var(--text); }
+.table-panel { overflow: hidden; }
+.table-scroll { overflow: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 1040px; }
+th, td { padding: 11px 12px; border-bottom: 1px solid #1d2934; text-align: left; white-space: nowrap; }
+th { position: sticky; top: 0; z-index: 1; color: var(--faint); background: #131d28; font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+th button { padding: 0; border: 0; color: inherit; background: transparent; font-size: inherit; font-weight: inherit; letter-spacing: inherit; text-transform: inherit; }
+th button:hover { color: var(--accent); }
+td { color: #c6d1da; font-variant-numeric: tabular-nums; }
+tbody tr { transition: background .12s ease; }
+tbody tr:hover, tbody tr:focus { outline: none; background: var(--panel-hover); }
+td.num { text-align: right; }
+.cell-title { color: var(--text); font-weight: 600; }
+.cell-sub { margin-top: 2px; color: var(--faint); font-size: 10px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 7px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); background: rgba(255, 255, 255, .025); font-size: 10px; font-weight: 750; letter-spacing: .04em; }
+.badge-speed { color: var(--accent); border-color: rgba(112, 201, 255, .32); background: var(--accent-soft); }
+.badge-fast { color: var(--green); border-color: rgba(110, 231, 173, .3); background: var(--green-soft); }
+.badge-status-completed { color: var(--green); border-color: rgba(110, 231, 173, .3); background: var(--green-soft); }
+.badge-status-interrupted, .badge-status-failed { color: var(--red); border-color: rgba(255, 140, 154, .3); background: var(--red-soft); }
+.badge-status-open { color: var(--amber); border-color: rgba(243, 197, 107, .3); background: var(--amber-soft); }
+.pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 13px; color: var(--muted); font-size: 11px; }
+.pagination-actions { display: flex; gap: 5px; }
+.pagination button { border: 1px solid var(--line); border-radius: 5px; color: var(--muted); background: var(--panel-strong); padding: 5px 8px; }
+.pagination button:disabled { opacity: .4; cursor: default; }
+.orchestra-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, .8fr); gap: 12px; }
+.orchestra-panel { padding: 17px; }
+.turn-select { width: 100%; height: 33px; color: var(--text); background: #0a0f15; border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; }
+.timeline { margin-top: 20px; }
+.timeline-row { display: grid; grid-template-columns: 104px minmax(0, 1fr) 116px; align-items: center; gap: 10px; margin: 11px 0; }
+.timeline-label { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; }
+.timeline-track { position: relative; height: 21px; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: #0a0f15; }
+.timeline-bar { height: 100%; min-width: 5px; border-radius: 3px; background: linear-gradient(90deg, #5bb9ee, #a6e3ff); }
+.timeline-bar.worker { background: linear-gradient(90deg, #8876dc, #c2b5ff); }
+.timeline-track.unknown { display: flex; align-items: center; padding: 0 8px; border-style: dashed; color: var(--faint); font-size: 10px; }
+.timeline-value { color: var(--faint); font-size: 10px; text-align: right; }
+.timeline-note { margin: 16px 0 0; padding: 9px 10px; border-left: 2px solid var(--amber); color: var(--muted); background: var(--amber-soft); font-size: 11px; }
+.small-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin-top: 14px; }
+.small-metric { padding: 11px 12px; background: var(--bg-soft); border: 1px solid var(--line); border-radius: 8px; }
+.small-metric span { display: block; color: var(--faint); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
+.small-metric strong { display: block; margin-top: 4px; font-size: 16px; }
+.subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.benchmark-grid, .quality-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.benchmark-card, .quality-card { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.benchmark-card h3, .quality-card h3 { margin: 0; font-size: 13px; }
+.benchmark-card .sample { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.benchmark-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+.benchmark-metrics span { display: block; color: var(--faint); font-size: 10px; }
+.benchmark-metrics strong { display: block; margin-top: 3px; font-size: 17px; }
+.benchmark-empty { margin-top: 20px; padding: 11px 12px; border: 1px dashed var(--line-strong); border-radius: 7px; color: var(--muted); font-size: 11px; }
+.quality-card .value { display: block; margin-top: 8px; font-size: 23px; font-weight: 760; }
+.quality-card .note { margin: 3px 0 0; color: var(--faint); font-size: 10px; }
+.quality-card .value.good { color: var(--green); }
+.quality-card .value.warn { color: var(--amber); }
+.quality-card .value.alert { color: var(--red); }
+.quality-list { margin-top: 12px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.quality-row { display: flex; justify-content: space-between; gap: 20px; padding: 11px 13px; border-bottom: 1px solid var(--line); }
+.quality-row:last-child { border-bottom: 0; }
+.quality-row span { color: var(--muted); }
+.quality-row strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.privacy-note { margin-top: 12px; padding: 11px 13px; color: var(--muted); background: var(--accent-soft); border: 1px solid rgba(112, 201, 255, .22); border-radius: 8px; font-size: 11px; }
+.drawer-scrim { display: none; position: fixed; inset: 0; z-index: 39; background: rgba(0, 0, 0, .46); }
+.drawer-scrim.open { display: block; }
+.drawer { position: fixed; z-index: 40; top: 0; right: 0; bottom: 0; width: min(560px, 94vw); overflow: auto; padding: 22px; background: #0e151e; border-left: 1px solid var(--line-strong); box-shadow: -18px 0 50px rgba(0, 0, 0, .35); transform: translateX(102%); transition: transform .18s ease; }
+.drawer.open { transform: translateX(0); }
+.drawer-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+.drawer-close { width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--panel); }
+.drawer h2 { margin: 4px 0 4px; font-size: 20px; letter-spacing: -.03em; }
+.drawer-sub { color: var(--muted); font-size: 11px; }
+.drawer-section { margin-top: 23px; }
+.drawer-section h3 { margin: 0 0 10px; color: var(--faint); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.token-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.token-cell { padding: 10px 11px; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; }
+.token-cell span { display: block; color: var(--faint); font-size: 10px; }
+.token-cell strong { display: block; margin-top: 3px; color: var(--text); font-size: 15px; font-variant-numeric: tabular-nums; }
+.detail-list { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.detail-row { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: 10px; padding: 9px 11px; border-bottom: 1px solid var(--line); }
+.detail-row:last-child { border-bottom: 0; }
+.detail-row span { color: var(--faint); font-size: 11px; }
+.detail-row strong { overflow: hidden; color: var(--text); font-size: 11px; font-weight: 550; text-overflow: ellipsis; }
+.worker-list { display: grid; gap: 7px; }
+.worker-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; }
+.worker-row .worker-name { overflow: hidden; color: var(--text); text-overflow: ellipsis; }
+.worker-row small { color: var(--muted); }
+.footer-note { margin-top: 20px; color: var(--faint); font-size: 10px; }
+@media (max-width: 1180px) {
+  .hero-panel { grid-template-columns: minmax(280px, 1.4fr) repeat(3, 1fr); }
+  .hero-stat:nth-last-child(-n+2) { border-top: 1px solid rgba(255, 255, 255, .06); }
+  .metric-grid { grid-template-columns: repeat(3, 1fr); }
+  .benchmark-grid, .quality-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 820px) {
+  .app-shell { padding: 16px 13px 30px; }
+  .topbar { display: block; }
+  .live-cluster { display: inline-flex; margin-top: 15px; }
+  .hero-panel, .chart-grid, .chart-grid.secondary, .orchestra-layout, .subgrid { grid-template-columns: 1fr; }
+  .hero-main { border-right: 0; border-bottom: 1px solid rgba(112, 201, 255, .16); }
+  .hero-stat { min-height: 82px; border-top: 1px solid rgba(255, 255, 255, .06); }
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .filterbar { position: static; align-items: stretch; }
+  .filter-spacer { display: none; }
+  .benchmark-grid, .quality-grid { grid-template-columns: 1fr; }
+  .small-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <div>
+      <div class="kicker">Local observability · read-only</div>
+      <h1>Orchestra <span>Telemetry</span></h1>
+      <p class="subtitle">A calm, evidence-first view of turn lifecycle, usage quality, and orchestration cost.</p>
+    </div>
+    <div class="live-cluster"><span class="live-dot"></span><strong>Live ledger</strong><span id="updatedText">Last updated: pending</span></div>
+  </header>
+  <nav class="tabs" aria-label="Dashboard views">
+    <button class="tab active" data-nav-view="overview">Overview</button>
+    <button class="tab" data-nav-view="turns">Turns</button>
+    <button class="tab" data-nav-view="orchestra">Orchestra</button>
+    <button class="tab" data-nav-view="benchmarks">Benchmarks</button>
+    <button class="tab" data-nav-view="quality">Data quality</button>
+  </nav>
+  <section class="filterbar" aria-label="Dashboard filters">
+    <div class="filter-group"><span class="filter-label">Period</span><div class="segmented">
+      <button data-period="today">Today</button><button data-period="7d">7D</button><button data-period="30d">30D</button><button class="active" data-period="all">All</button>
+    </div></div>
+    <div class="filter-group"><span class="filter-label">Project</span><select id="projectFilter"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Model</span><select id="modelFilter"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Speed</span><select id="speedFilter"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Status</span><select id="statusFilter"><option value="">All</option></select></div>
+    <div class="filter-group"><span class="filter-label">Workers</span><select id="workersFilter"><option value="">All</option><option value="has">Has workers</option><option value="none">No workers</option></select></div>
+    <div class="filter-group search-wrap"><span>⌕</span><input id="searchFilter" type="search" placeholder="Search project or model"></div>
+    <label class="check"><input id="exactFilter" type="checkbox"> Exact only</label>
+    <div class="filter-spacer"></div>
+    <button id="refreshNow" class="action primary">Refresh</button>
+    <label class="check"><input id="autoRefresh" type="checkbox" checked> Auto refresh</label>
+    <span id="refreshState" class="refresh-state">ON · 5s</span>
+  </section>
+  <main>
+    <section id="overviewView" class="view active"></section>
+    <section id="turnsView" class="view"></section>
+    <section id="orchestraView" class="view"></section>
+    <section id="benchmarksView" class="view"></section>
+    <section id="qualityView" class="view"></section>
+  </main>
+</div>
+<div id="drawerScrim" class="drawer-scrim"></div>
+<aside id="detailDrawer" class="drawer" aria-hidden="true"></aside>
+<script>
+let DATA = __PAYLOAD__;
+const LIVE_MODE = __LIVE_MODE__;
+const UNKNOWN = "UNKNOWN";
+const PAGE_SIZE = 14;
+const STATE = {
+  view: "overview", period: "all", project: "", model: "", speed: "", status: "",
+  workers: "", query: "", exact: false, sort: "timestamp", direction: -1,
+  page: 1, drawer: null, orchestra: null, updated: null
+};
+const URL_STATE = new URLSearchParams(location.search);
+if (["overview", "turns", "orchestra", "benchmarks", "quality"].includes(URL_STATE.get("view"))) STATE.view = URL_STATE.get("view");
+if (URL_STATE.get("turn")) STATE.drawer = URL_STATE.get("turn");
+if (URL_STATE.get("orchestra")) STATE.orchestra = URL_STATE.get("orchestra");
+const $ = id => document.getElementById(id);
+const esc = value => String(value == null ? "" : value).replace(/[&<>'"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" }[c]));
+const isKnown = value => value !== null && value !== undefined && value !== "" && value !== UNKNOWN;
+const num = value => isKnown(value) ? Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 }) : UNKNOWN;
+const compact = value => {
+  if (!isKnown(value)) return UNKNOWN;
+  const n = Number(value), a = Math.abs(n);
+  if (a >= 1000000000) return (n / 1000000000).toFixed(a >= 10000000000 ? 1 : 2).replace(/\.0+$/, "") + "B";
+  if (a >= 1000000) return (n / 1000000).toFixed(a >= 10000000 ? 1 : 2).replace(/\.0+$/, "") + "M";
+  if (a >= 1000) return (n / 1000).toFixed(a >= 100000 ? 0 : 1).replace(/\.0+$/, "") + "K";
+  return num(n);
+};
+const percent = value => isKnown(value) ? Number(value).toFixed(1) + "%" : UNKNOWN;
+const ratioPercent = value => isKnown(value) ? (Number(value) * 100).toFixed(1) + "%" : UNKNOWN;
+const duration = value => {
+  if (!isKnown(value)) return UNKNOWN;
+  const s = Math.max(0, Math.round(Number(value)));
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s / 60) + "m " + String(s % 60).padStart(2, "0") + "s";
+  return Math.floor(s / 3600) + "h " + String(Math.floor((s % 3600) / 60)).padStart(2, "0") + "m";
+};
+const dateKey = value => {
+  if (!isKnown(value)) return UNKNOWN;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? UNKNOWN : d.toISOString().slice(0, 10);
+};
+const dateLabel = value => {
+  if (!isKnown(value)) return UNKNOWN;
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? UNKNOWN : d.toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+};
+const timestamp = value => isKnown(value) ? Date.parse(value) || 0 : 0;
+const statusBadge = value => '<span class="badge badge-status-' + String(value || "UNKNOWN").toLowerCase() + '">' + esc(value || UNKNOWN) + '</span>';
+const speedBadge = row => {
+  const speed = row.speed_mode || UNKNOWN;
+  const cls = row.speed_certified ? (speed === "FAST" ? "badge-fast" : "badge-speed") : "";
+  return '<span class="badge ' + cls + '">' + esc(speed) + (row.speed_certified ? " · certified" : "") + '</span>';
+};
+const emptyChart = (id, title, detail) => {
+  const el = $(id);
+  if (el) el.innerHTML = '<div class="empty-chart"><div><strong>' + esc(title) + '</strong><span>' + esc(detail) + '</span></div></div>';
+};
+const median = values => {
+  const a = values.filter(isKnown).map(Number).sort((x, y) => x - y);
+  if (!a.length) return null;
+  const m = Math.floor(a.length / 2);
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+const latest = rows => rows.slice().sort((a, b) => timestamp(b.timestamp) - timestamp(a.timestamp))[0] || null;
+const rowById = id => DATA.turns.find(row => row.run_id === id) || null;
+function setOptions(id, values) {
+  const el = $(id), old = el.value;
+  el.innerHTML = '<option value="">All</option>' + values.map(v => '<option value="' + esc(v) + '">' + esc(v) + '</option>').join("");
+  if (values.includes(old)) el.value = old;
+}
+function periodAllows(row) {
+  if (STATE.period === "all" || !isKnown(row.timestamp)) return true;
+  const stamp = timestamp(row.timestamp);
+  if (!stamp) return false;
+  if (STATE.period === "today") return dateKey(row.timestamp) === dateKey(new Date().toISOString());
+  const days = STATE.period === "7d" ? 7 : 30;
+  return stamp >= Date.now() - days * 86400000;
+}
+function filteredRows(ignorePeriod = false) {
+  const query = STATE.query.trim().toLowerCase();
+  return DATA.turns.filter(row => {
+    if (!ignorePeriod && !periodAllows(row)) return false;
+    if (STATE.project && row.project !== STATE.project) return false;
+    if (STATE.model && row.model !== STATE.model) return false;
+    if (STATE.speed && row.speed_mode !== STATE.speed) return false;
+    if (STATE.status && row.status !== STATE.status) return false;
+    if (STATE.workers === "has" && !(row.worker_count > 0)) return false;
+    if (STATE.workers === "none" && row.worker_count > 0) return false;
+    if (STATE.exact && row.usage_quality !== "EXACT") return false;
+    if (query && !(String(row.project).toLowerCase().includes(query) || String(row.model).toLowerCase().includes(query) || String(row.worktree).toLowerCase().includes(query))) return false;
+    return true;
+  });
+}
+function valueForSort(row, key) {
+  const value = row[key];
+  if (key === "timestamp") return timestamp(value);
+  if (value === null || value === undefined || value === UNKNOWN) return -Infinity;
+  if (typeof value === "number") return value;
+  return String(value).toLowerCase();
+}
+function sortedRows(rows) {
+  return rows.slice().sort((a, b) => {
+    const av = valueForSort(a, STATE.sort), bv = valueForSort(b, STATE.sort);
+    if (av < bv) return -1 * STATE.direction;
+    if (av > bv) return 1 * STATE.direction;
+    return timestamp(b.timestamp) - timestamp(a.timestamp);
+  });
+}
+function metricCard(label, value, detail, cls) {
+  return '<div class="metric-card ' + (cls || "") + '"><span class="label">' + esc(label) + '</span><span class="value">' + esc(value) + '</span><span class="detail">' + esc(detail || "") + '</span></div>';
+}
+function smallMetric(label, value) {
+  return '<div class="small-metric"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
+}
+function chartPanel(title, subtitle, id, extra) {
+  return '<article class="panel chart-panel ' + (extra || "") + '"><div class="panel-head"><div><h3>' + esc(title) + '</h3><p>' + esc(subtitle) + '</p></div><span id="' + id + 'Meta" class="chart-meta"></span></div><div id="' + id + '" class="chart"></div></article>';
+}
+function lineChart(id, rows, field, exactOnly, formatter, pointClass) {
+  let data = rows.filter(row => isKnown(row[field]) && (!exactOnly || row.usage_quality === "EXACT")).slice(-90);
+  if (!data.length) {
+    emptyChart(id, exactOnly ? "No exact observations in this selection" : "No valid observations in this selection", exactOnly ? "Exact telemetry is shown only when the canonical quality is EXACT." : "Missing duration values remain UNKNOWN.");
+    const meta = $(id + "Meta"); if (meta) meta.textContent = "N=0";
+    return;
+  }
+  const values = data.map(row => Number(row[field])), max = Math.max(...values, 1);
+  const W = 820, H = 240, L = 48, R = 16, T = 16, B = 35, CW = W - L - R, CH = H - T - B;
+  const x = i => L + (CW * i / Math.max(data.length - 1, 1));
+  const y = value => T + CH - (value / max) * CH;
+  const grid = [0, 1, 2, 3, 4].map(i => {
+    const yy = T + CH * i / 4;
+    return '<line class="chart-gridline" x1="' + L + '" y1="' + yy + '" x2="' + (W - R) + '" y2="' + yy + '"></line><text class="chart-label" x="' + (L - 8) + '" y="' + (yy + 3) + '" text-anchor="end">' + esc(formatter(max * (1 - i / 4))) + '</text>';
+  }).join("");
+  const points = values.map((value, i) => x(i) + "," + y(value)).join(" ");
+  const area = "M " + L + " " + (T + CH) + " L " + values.map((value, i) => x(i) + " " + y(value)).join(" L ") + " L " + x(values.length - 1) + " " + (T + CH) + " Z";
+  const dots = data.map((row, i) => '<circle class="chart-point ' + (pointClass || "") + '" cx="' + x(i) + '" cy="' + y(Number(row[field])) + '" r="3.4"><title>' + esc(dateLabel(row.timestamp) + " · " + formatter(row[field])) + '</title></circle>').join("");
+  $(id).innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img">' +
+    '<defs><linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#70c9ff" stop-opacity=".25"></stop><stop offset="1" stop-color="#70c9ff" stop-opacity="0"></stop></linearGradient></defs>' +
+    grid + '<line class="chart-axis" x1="' + L + '" y1="' + (T + CH) + '" x2="' + (W - R) + '" y2="' + (T + CH) + '"></line><path class="chart-area" d="' + area + '"></path><polyline class="chart-line" points="' + points + '"></polyline>' + dots +
+    '<text class="chart-label" x="' + L + '" y="' + (H - 9) + '">' + esc(dateLabel(data[0].timestamp)) + '</text><text class="chart-label" x="' + (W - R) + '" y="' + (H - 9) + '" text-anchor="end">' + esc(dateLabel(data[data.length - 1].timestamp)) + '</text></svg>';
+  const meta = $(id + "Meta"); if (meta) meta.textContent = "N=" + data.length + (exactOnly ? " · exact" : "");
+}
+function scatterChart(id, rows, xField = "duration_seconds", yField = "exact_total_tokens", xLabel = "duration", yLabel = "tokens", xFormatter = duration, yFormatter = compact) {
+  const data = rows.filter(row => isKnown(row[xField]) && isKnown(row[yField])).slice(-120);
+  if (!data.length) {
+    emptyChart(id, "No paired exact observations", "This view needs both a valid duration and exact total tokens.");
+    const meta = $(id + "Meta"); if (meta) meta.textContent = "N=0";
+    return;
+  }
+  const maxX = Math.max(...data.map(row => Number(row[xField])), 1), maxY = Math.max(...data.map(row => Number(row[yField])), 1);
+  const W = 820, H = 240, L = 54, R = 16, T = 16, B = 35, CW = W - L - R, CH = H - T - B;
+  const x = value => L + (Number(value) / maxX) * CW, y = value => T + CH - (Number(value) / maxY) * CH;
+  const dots = data.map(row => '<circle class="chart-point amber" cx="' + x(row[xField]) + '" cy="' + y(row[yField]) + '" r="4"><title>' + esc(row.project + " · " + xFormatter(row[xField]) + " · " + yFormatter(row[yField])) + '</title></circle>').join("");
+  $(id).innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img"><line class="chart-axis" x1="' + L + '" y1="' + (T + CH) + '" x2="' + (W - R) + '" y2="' + (T + CH) + '"></line><line class="chart-axis" x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + CH) + '"></line>' + dots + '<text class="chart-label" x="' + L + '" y="' + (H - 9) + '">' + esc(xLabel + " → " + xFormatter(maxX)) + '</text><text class="chart-label" x="' + (L + 5) + '" y="' + (T + 11) + '">' + esc(yLabel + " ↑ " + yFormatter(maxY)) + '</text></svg>';
+  const meta = $(id + "Meta"); if (meta) meta.textContent = "N=" + data.length + " · exact pairs";
+}
+function renderOverview() {
+  const rows = filteredRows(), todayRows = filteredRows(true).filter(row => dateKey(row.timestamp) === dateKey(new Date().toISOString()));
+  const row = latest(rows);
+  const exactToday = todayRows.filter(item => item.usage_quality === "EXACT");
+  const exactAll = rows.filter(item => item.usage_quality === "EXACT");
+  const wallToday = todayRows.filter(item => isKnown(item.duration_seconds)).reduce((sum, item) => sum + Number(item.duration_seconds), 0);
+  const workersUsed = todayRows.filter(item => item.worker_count > 0).length;
+  const statusText = row ? statusBadge(row.status) : '<span class="badge">NO DATA</span>';
+  const hero = row ? '<section class="hero-panel"><div class="hero-main"><div class="hero-eyebrow">Latest substantive turn</div><div class="hero-title">' + esc(row.project || UNKNOWN) + '</div><div class="hero-subtitle">' + esc(row.worktree || UNKNOWN) + ' · ' + esc(row.model || UNKNOWN) + (row.reasoning_effort && row.reasoning_effort !== UNKNOWN ? ' · ' + esc(row.reasoning_effort) : "") + '</div><div class="hero-badges">' + speedBadge(row) + statusText + '</div><div class="hero-meta"><strong>' + esc(dateLabel(row.timestamp)) + '</strong> · ' + esc(row.turn_id || UNKNOWN) + '</div></div>' +
+    '<div class="hero-stat"><span class="label">Duration</span><span class="value">' + esc(duration(row.duration_seconds)) + '</span><span class="hint">wall time</span></div>' +
+    '<div class="hero-stat"><span class="label">Root tokens</span><span class="value">' + esc(compact(row.root_exact_total_tokens)) + '</span><span class="hint">' + esc(row.root_usage_quality) + '</span></div>' +
+    '<div class="hero-stat"><span class="label">Worker tokens</span><span class="value">' + esc(compact(row.worker_exact_total_tokens)) + '</span><span class="hint">' + esc(row.worker_usage_quality) + '</span></div>' +
+    '<div class="hero-stat"><span class="label">Orchestra total</span><span class="value">' + esc(compact(row.orchestra_exact_total_tokens)) + '</span><span class="hint">' + esc(row.orchestra_usage_quality) + '</span></div>' +
+    '<div class="hero-stat"><span class="label">Cached</span><span class="value">' + esc(ratioPercent(row.cache_ratio)) + '</span><span class="hint">' + esc(row.worker_count == null ? "workers UNKNOWN" : row.worker_count + " workers") + '</span></div></section>' :
+    '<section class="hero-panel"><div class="hero-main"><div class="hero-eyebrow">Latest substantive turn</div><div class="hero-title">No turns match the current filters</div><div class="hero-subtitle">Reset filters to restore the latest telemetry state.</div></div></section>';
+  const statusCounts = ["COMPLETED", "INTERRUPTED"].map(status => todayRows.filter(item => item.status === status).length).join(" / ");
+  $("overviewView").innerHTML = hero +
+    '<div class="metric-grid">' +
+      metricCard("Turns today", num(todayRows.length), todayRows.length + " observed turns", "") +
+      metricCard("Exact tokens today", compact(exactToday.reduce((sum, item) => sum + Number(item.exact_total_tokens), 0)), "N=" + exactToday.length + " exact turns", "accent") +
+      metricCard("Wall time today", duration(wallToday), todayRows.filter(item => isKnown(item.duration_seconds)).length + " known durations", "") +
+      metricCard("Exact coverage", percent(rows.length ? 100 * exactAll.length / rows.length : null), exactAll.length + " / " + rows.length + " turns", exactAll.length ? "good" : "warn") +
+      metricCard("Completed / interrupted", statusText === "" ? UNKNOWN : statusCounts, "today · lifecycle", "") +
+      metricCard("Workers used", num(workersUsed), "today · declared workers", workersUsed ? "accent" : "") +
+    '</div>' +
+    '<div class="section-head"><div><h2>Signal overview</h2><p>Token charts are exact-only; duration accepts every valid observation.</p></div><p>' + esc(rows.length + " turns in selection") + '</p></div>' +
+    '<div class="chart-grid">' +
+      chartPanel("Token usage per turn", "Canonical exact total tokens", "tokenChart", "large") +
+      chartPanel("Turn duration over time", "All valid wall-clock observations", "durationChart", "") +
+    '</div><div class="chart-grid secondary">' +
+      chartPanel("Duration vs orchestra tokens", "Only paired exact observations", "scatterChart", "") +
+      chartPanel("Cache ratio / context reuse", "Cached input ÷ input, exact usage only", "cacheChart", "") +
+    '</div>';
+  lineChart("tokenChart", rows, "exact_total_tokens", true, compact, "");
+  lineChart("durationChart", rows, "duration_seconds", false, duration, "green");
+  scatterChart("scatterChart", rows);
+  lineChart("cacheChart", rows, "cache_ratio", true, ratioPercent, "amber");
+}
+function sortable(key, label) {
+  const marker = STATE.sort === key ? (STATE.direction === 1 ? " ↑" : " ↓") : "";
+  return '<th><button data-sort="' + key + '">' + esc(label + marker) + '</button></th>';
+}
+function renderTurns() {
+  const all = sortedRows(filteredRows()), pages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+  STATE.page = Math.min(STATE.page, pages);
+  const start = (STATE.page - 1) * PAGE_SIZE, rows = all.slice(start, start + PAGE_SIZE);
+  const body = rows.length ? rows.map(row => '<tr tabindex="0" data-run="' + esc(row.run_id) + '">' +
+    '<td>' + esc(dateLabel(row.timestamp)) + '</td><td><div class="cell-title">' + esc(row.project) + '</div><div class="cell-sub">' + esc(row.worktree) + '</div></td>' +
+    '<td>' + esc(row.model || UNKNOWN) + (row.reasoning_effort && row.reasoning_effort !== UNKNOWN ? '<div class="cell-sub">' + esc(row.reasoning_effort) + '</div>' : "") + '</td><td>' + speedBadge(row) + '</td>' +
+    '<td class="num">' + esc(row.worker_count == null ? UNKNOWN : num(row.worker_count)) + '</td><td class="num">' + esc(duration(row.duration_seconds)) + '</td>' +
+    '<td class="num">' + esc(compact(row.root_exact_total_tokens)) + '</td><td class="num">' + esc(compact(row.worker_exact_total_tokens)) + '</td><td class="num">' + esc(compact(row.orchestra_exact_total_tokens)) + '</td>' +
+    '<td class="num">' + esc(ratioPercent(row.cache_ratio)) + '</td><td>' + statusBadge(row.status) + '</td></tr>').join("") : '<tr><td colspan="11"><div class="empty-chart">No turns match the current filters.</div></td></tr>';
+  $("turnsView").innerHTML = '<div class="section-head"><div><h2>Turns</h2><p>Click a row for the complete evidence detail. Long identifiers stay out of the table.</p></div><p><strong>' + all.length + '</strong> matching turns</p></div>' +
+    '<div class="panel table-panel"><div class="table-scroll"><table><thead><tr>' + sortable("timestamp", "Time") + sortable("project", "Project") + sortable("model", "Model") + '<th>Speed</th>' + sortable("worker_count", "Workers") + sortable("duration_seconds", "Duration") + sortable("root_exact_total_tokens", "Root tokens") + sortable("worker_exact_total_tokens", "Worker tokens") + sortable("orchestra_exact_total_tokens", "Orchestra tokens") + sortable("cache_ratio", "Cache %") + '<th>Status</th></tr></thead><tbody>' + body + '</tbody></table></div>' +
+    '<div class="pagination"><span>Showing ' + (all.length ? (start + 1) : 0) + '–' + Math.min(start + PAGE_SIZE, all.length) + ' of ' + all.length + '</span><div class="pagination-actions"><button data-page="prev" ' + (STATE.page <= 1 ? "disabled" : "") + '>Previous</button><button data-page="next" ' + (STATE.page >= pages ? "disabled" : "") + '>Next</button></div></div></div>';
+}
+function tokenCell(label, value) {
+  return '<div class="token-cell"><span>' + esc(label) + '</span><strong>' + esc(value) + '</strong></div>';
+}
+function detailRow(label, value) {
+  return '<div class="detail-row"><span>' + esc(label) + '</span><strong title="' + esc(value) + '">' + esc(value) + '</strong></div>';
+}
+function renderDrawer() {
+  const drawer = $("detailDrawer"), scrim = $("drawerScrim"), row = rowById(STATE.drawer);
+  if (!row) { drawer.classList.remove("open"); scrim.classList.remove("open"); drawer.setAttribute("aria-hidden", "true"); return; }
+  const workerRows = row.workers && row.workers.length ? row.workers.map(worker => '<div class="worker-row"><span class="worker-name">' + esc(worker.worker_id) + '<small> · ' + esc(worker.model) + '</small></span><small>' + esc(worker.status) + '</small><strong>' + esc(compact(worker.total_tokens)) + '</strong></div>').join("") : '<div class="empty-chart">No worker observations for this turn.</div>';
+  drawer.innerHTML = '<div class="drawer-head"><div><div class="kicker">Turn detail</div><h2>' + esc(row.project) + '</h2><div class="drawer-sub">' + esc(row.model) + ' · ' + esc(duration(row.duration_seconds)) + ' · ' + statusBadge(row.status) + '</div></div><button class="drawer-close" data-close-drawer aria-label="Close detail">×</button></div>' +
+    '<div class="drawer-section"><h3>Token breakdown</h3><div class="token-grid">' +
+      tokenCell("Input", compact(row.input_tokens)) + tokenCell("Cached", compact(row.cached_input_tokens)) + tokenCell("Non-cached", compact(row.non_cached_input_tokens)) + tokenCell("Output", compact(row.output_tokens)) + tokenCell("Reasoning", compact(row.reasoning_tokens)) + tokenCell("Root total", compact(row.root_exact_total_tokens)) + tokenCell("Worker total", compact(row.worker_exact_total_tokens)) + tokenCell("Orchestra total", compact(row.orchestra_exact_total_tokens)) +
+    '</div></div><div class="drawer-section"><h3>Orchestra</h3><div class="detail-list">' +
+      detailRow("Worker count", row.worker_count == null ? UNKNOWN : num(row.worker_count)) + detailRow("Worker active time", duration(row.worker_wall_seconds)) + detailRow("Max concurrency", row.max_concurrency == null ? UNKNOWN : num(row.max_concurrency)) + detailRow("Attribution", row.attribution_quality) +
+    '</div><div class="worker-list" style="margin-top:8px">' + workerRows + '</div></div>' +
+    '<div class="drawer-section"><h3>Metadata</h3><div class="detail-list">' +
+      detailRow("Turn ID", row.turn_id || UNKNOWN) + detailRow("Session / thread", (row.session_id || UNKNOWN) + " / " + (row.thread_id || UNKNOWN)) + detailRow("Worktree", row.worktree || UNKNOWN) + detailRow("Usage source", row.usage_source || UNKNOWN) + detailRow("Usage quality", row.usage_quality || UNKNOWN) + detailRow("Speed evidence", row.speed_mode_source || UNKNOWN) + detailRow("Measurement", row.measurement_generation || UNKNOWN) + detailRow("Reasoning effort", row.reasoning_effort || UNKNOWN) +
+    '</div></div><div class="footer-note">Only lifecycle metadata and whitelisted usage fields are shown here. Prompt and response content are never part of this view.</div>';
+  drawer.classList.add("open"); scrim.classList.add("open"); drawer.setAttribute("aria-hidden", "false");
+}
+function renderOrchestra() {
+  const rows = sortedRows(filteredRows()), selected = rowById(STATE.orchestra) || latest(rows) || null;
+  if (selected) STATE.orchestra = selected.run_id;
+  const options = rows.map(row => '<option value="' + esc(row.run_id) + '"' + (selected && selected.run_id === row.run_id ? " selected" : "") + '>' + esc(dateLabel(row.timestamp) + " · " + row.project + " · " + row.model) + '</option>').join("");
+  if (!selected) {
+    $("orchestraView").innerHTML = '<div class="section-head"><div><h2>Orchestra</h2><p>Worker timelines and contribution analysis.</p></div></div><div class="panel orchestra-panel"><div class="empty-chart"><div><strong>No turn selected</strong><span>Reset filters or choose a turn with orchestra metadata.</span></div></div></div>';
+    return;
+  }
+  const workerItems = selected.workers || [];
+  const rootTimed = isKnown(selected.duration_seconds);
+  const rootLine = '<div class="timeline-row"><div class="timeline-label">ROOT · ' + esc(selected.model || UNKNOWN) + '</div><div class="timeline-track ' + (rootTimed ? "" : "unknown") + '">' + (rootTimed ? '<div class="timeline-bar" style="width:100%"></div>' : "duration UNKNOWN") + '</div><div class="timeline-value">' + esc(duration(selected.duration_seconds)) + '</div></div>';
+  const workerLines = workerItems.length ? workerItems.map(worker => {
+    const timed = isKnown(selected.worker_wall_seconds) && Number(selected.duration_seconds) > 0;
+    const width = timed ? Math.max(5, Math.min(100, Number(selected.worker_wall_seconds) / Number(selected.duration_seconds) * 100 / Math.max(workerItems.length, 1))) : 0;
+    return '<div class="timeline-row"><div class="timeline-label">' + esc(worker.worker_id) + '</div><div class="timeline-track ' + (timed ? "" : "unknown") + '">' + (timed ? '<div class="timeline-bar worker" style="width:' + width + '%"></div>' : "start offset UNKNOWN · active duration UNKNOWN") + '</div><div class="timeline-value">' + esc(compact(worker.total_tokens)) + ' tokens</div></div>';
+  }).join("") : '<div class="empty-chart"><div><strong>No worker observations</strong><span>This turn is root-only or worker metadata is unavailable.</span></div></div>';
+  const workerShare = isKnown(selected.worker_exact_total_tokens) && isKnown(selected.orchestra_exact_total_tokens) && Number(selected.orchestra_exact_total_tokens) > 0 ? Number(selected.worker_exact_total_tokens) / Number(selected.orchestra_exact_total_tokens) : null;
+  const parallel = isKnown(selected.worker_wall_seconds) && Number(selected.duration_seconds) > 0 ? Number(selected.worker_wall_seconds) / Number(selected.duration_seconds) : null;
+  $("orchestraView").innerHTML = '<div class="section-head"><div><h2>Orchestra</h2><p>Inspect worker timing, overlap, and token share without inferring missing evidence.</p></div></div><div class="orchestra-layout"><section class="panel orchestra-panel"><select id="orchestraSelect" class="turn-select">' + options + '</select><div class="timeline">' + rootLine + workerLines + '</div><div class="timeline-note">Worker start offsets and active durations are shown only when captured. UNKNOWN values are not rendered as inferred bars.</div><div class="small-grid">' + smallMetric("Root duration", duration(selected.duration_seconds)) + smallMetric("Worker active time", duration(selected.worker_wall_seconds)) + smallMetric("Parallelism factor", isKnown(parallel) ? parallel.toFixed(2) + "×" : UNKNOWN) + smallMetric("Max concurrency", selected.max_concurrency == null ? UNKNOWN : num(selected.max_concurrency)) + smallMetric("Worker token share", ratioPercent(workerShare)) + smallMetric("Exact orchestra total", compact(selected.orchestra_exact_total_tokens)) + '</div></section><section class="panel orchestra-panel"><div class="panel-head"><div><h3>Selected turn</h3><p>' + esc((selected.project || UNKNOWN) + " · " + (selected.worktree || UNKNOWN)) + '</p></div>' + statusBadge(selected.status) + '</div><div class="detail-list">' + detailRow("Speed", (selected.speed_mode || UNKNOWN) + (selected.speed_certified ? " · certified" : "")) + detailRow("Root usage", selected.root_usage_quality || UNKNOWN) + detailRow("Worker usage", selected.worker_usage_quality || UNKNOWN) + detailRow("Orchestra usage", selected.orchestra_usage_quality || UNKNOWN) + detailRow("Attribution source", selected.attribution_source || UNKNOWN) + detailRow("Turn ID", selected.turn_id || UNKNOWN) + '</div><button class="action primary" data-open-drawer="' + esc(selected.run_id) + '" style="margin-top:13px">Open turn detail</button></section></div>' +
+    '<div class="section-head"><div><h2>Aggregate orchestration signals</h2><p>Charts stay compact when the ledger has no certified observations.</p></div></div><div class="subgrid">' + chartPanel("Worker count vs duration", "Known duration observations", "workerDurationChart", "") + chartPanel("Worker count vs orchestra tokens", "Exact orchestra totals only", "workerTokenChart", "") + chartPanel("Duration vs orchestra tokens", "Exact paired observations", "orchestraScatterChart", "") + chartPanel("Root vs worker exact usage", "Exact root/worker token share", "shareChart", "") + '</div>';
+  $("orchestraSelect").onchange = event => { STATE.orchestra = event.target.value; renderOrchestra(); };
+  const workerDuration = rows.filter(item => item.worker_count != null && item.duration_seconds != null);
+  if (!workerDuration.length) emptyChart("workerDurationChart", "No worker duration cohort", "Worker timing is UNKNOWN for the available observations.");
+  else scatterChart("workerDurationChart", workerDuration.map(item => Object.assign({}, item, { exact_total_tokens: item.worker_count })), "duration_seconds", "exact_total_tokens", "duration", "worker count", duration, num);
+  const workerTokenRows = rows.filter(item => item.worker_count != null && item.orchestra_exact_total_tokens != null);
+  if (!workerTokenRows.length) emptyChart("workerTokenChart", "No exact orchestra cohort", "Worker-count comparisons require exact orchestra totals.");
+  else scatterChart("workerTokenChart", workerTokenRows.map(item => Object.assign({}, item, { duration_seconds: item.worker_count, exact_total_tokens: item.orchestra_exact_total_tokens })), "duration_seconds", "exact_total_tokens", "worker count", "orchestra tokens", num, compact);
+  scatterChart("orchestraScatterChart", rows);
+  const shareRows = rows.filter(item => item.worker_exact_total_tokens != null && item.root_exact_total_tokens != null);
+  if (!shareRows.length) emptyChart("shareChart", "No exact root/worker split", "Root and worker totals must both be exact.");
+  else {
+    const totalRoot = shareRows.reduce((sum, item) => sum + Number(item.root_exact_total_tokens), 0), totalWorker = shareRows.reduce((sum, item) => sum + Number(item.worker_exact_total_tokens), 0);
+    $("shareChart").innerHTML = '<div class="small-grid" style="margin-top:35px">' + smallMetric("Root", compact(totalRoot)) + smallMetric("Worker", compact(totalWorker)) + smallMetric("Worker share", ratioPercent(totalWorker / Math.max(totalRoot + totalWorker, 1))) + '</div>';
+    const meta = $("shareChartMeta"); if (meta) meta.textContent = "N=" + shareRows.length;
+  }
+}
+function benchmarkStats(rows, mode) {
+  const cohort = rows.filter(row => row.speed_certified && row.speed_mode === mode);
+  const exact = cohort.filter(row => row.usage_quality === "EXACT");
+  return { n: cohort.length, duration: median(cohort.map(row => row.duration_seconds)), tokens: median(exact.map(row => row.exact_total_tokens)), fresh: median(exact.map(row => row.non_cached_input_tokens)), cache: median(exact.map(row => row.cache_ratio)) };
+}
+function benchmarkCard(mode, stats) {
+  const cls = mode === "FAST" ? "badge-fast" : "badge-speed";
+  const metrics = stats.n ? '<div class="benchmark-metrics"><div><span>Median duration</span><strong>' + esc(duration(stats.duration)) + '</strong></div><div><span>Median total tokens</span><strong>' + esc(compact(stats.tokens)) + '</strong></div><div><span>Median fresh input</span><strong>' + esc(compact(stats.fresh)) + '</strong></div><div><span>Median cache ratio</span><strong>' + esc(ratioPercent(stats.cache)) + '</strong></div></div>' : '<div class="benchmark-empty">No launcher-certified turns yet. Use codex-fast or codex-standard to populate this comparison.</div>';
+  return '<article class="benchmark-card"><h3><span class="badge ' + cls + '">' + mode + '</span></h3><div class="sample">N=' + stats.n + ' certified turns</div>' + metrics + '</article>';
+}
+function renderBenchmarks() {
+  const rows = filteredRows(), fast = benchmarkStats(rows, "FAST"), standard = benchmarkStats(rows, "STANDARD");
+  $("benchmarksView").innerHTML = '<div class="section-head"><div><h2>Benchmarks</h2><p>Scientific comparison surface for launcher-certified cohorts only.</p></div><p>Always show N · no recommendation score</p></div><div class="benchmark-grid">' + benchmarkCard("FAST", fast) + benchmarkCard("STANDARD", standard) + '<article class="benchmark-card"><h3><span class="badge">DIRECT / LIGHT / HEAVY</span></h3><div class="sample">Future cohort boundary</div><div class="benchmark-empty">Mode cohorts are displayed only when their source records carry a comparable certification boundary.</div></article><article class="benchmark-card"><h3><span class="badge">Worker cohorts</span></h3><div class="sample">Future cohort boundary</div><div class="benchmark-empty">Worker-count comparisons remain descriptive until exact timing and usage coverage are available.</div></article></div><div class="privacy-note">Benchmark panels use only <strong>speed_mode_source=LAUNCHER_EXPLICIT</strong>. Missing or insufficient data stays visible as UNKNOWN rather than being treated as zero.</div>';
+}
+function renderQuality() {
+  const rows = filteredRows(), exact = rows.filter(row => row.usage_quality === "EXACT").length, unknown = rows.length - exact, open = rows.filter(row => row.status === "OPEN").length, certified = rows.filter(row => row.speed_certified).length;
+  $("qualityView").innerHTML = '<div class="section-head"><div><h2>Data quality</h2><p>Technical health and evidence boundaries for the current selection.</p></div><p>Fail-closed presentation</p></div><div class="quality-grid">' +
+    '<article class="quality-card"><h3>Exact usage coverage</h3><span class="value ' + (exact ? "good" : "warn") + '">' + esc(percent(rows.length ? 100 * exact / rows.length : null)) + '</span><p class="note">' + exact + ' exact · ' + unknown + ' UNKNOWN/PARTIAL</p></article>' +
+    '<article class="quality-card"><h3>Open turns</h3><span class="value ' + (open ? "warn" : "good") + '">' + esc(num(open)) + '</span><p class="note">Lifecycle has no completed close yet.</p></article>' +
+    '<article class="quality-card"><h3>Certified speed</h3><span class="value">' + esc(num(certified)) + '</span><p class="note">LAUNCHER_EXPLICIT records</p></article>' +
+    '<article class="quality-card"><h3>Fold errors</h3><span class="value ' + (DATA.exclusions.fold_errors ? "alert" : "good") + '">' + esc(num(DATA.exclusions.fold_errors)) + '</span><p class="note">Malformed runs are isolated.</p></article></div>' +
+    '<div class="section-head"><div><h2>Exclusion ledger</h2><p>Excluded source classes remain counted here for auditability.</p></div></div><div class="quality-list">' +
+      '<div class="quality-row"><span>Session-level runs excluded</span><strong>' + esc(num(DATA.exclusions.session_level_runs_excluded)) + '</strong></div><div class="quality-row"><span>Synthetic runs excluded</span><strong>' + esc(num(DATA.exclusions.synthetic_runs_excluded)) + '</strong></div><div class="quality-row"><span>Legacy manual observations excluded</span><strong>' + esc(num(DATA.exclusions.legacy_manual_observations_excluded)) + '</strong></div><div class="quality-row"><span>Valid source records</span><strong>' + esc(num(DATA.source.record_count)) + '</strong></div><div class="quality-row"><span>Ledger SHA-256</span><strong title="' + esc(DATA.source.ledger_sha256) + '">' + esc(DATA.source.ledger_sha256.slice(0, 16) + "…") + '</strong></div></div>' +
+    '<div class="privacy-note">Read-only boundary: this page reads the append-only ledger and writes only an optional rebuildable derived cache. No prompt, response, tool, code, or secret content is read or persisted.</div>';
+}
+function syncControls() {
+  setOptions("projectFilter", DATA.filters.projects);
+  setOptions("modelFilter", DATA.filters.models);
+  setOptions("speedFilter", DATA.filters.speed_modes);
+  setOptions("statusFilter", DATA.filters.statuses);
+  $("projectFilter").value = STATE.project; $("modelFilter").value = STATE.model; $("speedFilter").value = STATE.speed; $("statusFilter").value = STATE.status; $("workersFilter").value = STATE.workers; $("searchFilter").value = STATE.query; $("exactFilter").checked = STATE.exact;
+  document.querySelectorAll("[data-period]").forEach(button => button.classList.toggle("active", button.dataset.period === STATE.period));
+  document.querySelectorAll("[data-nav-view]").forEach(button => button.classList.toggle("active", button.dataset.navView === STATE.view));
+}
+function renderAll() {
+  syncControls();
+  $("overviewView").classList.toggle("active", STATE.view === "overview");
+  $("turnsView").classList.toggle("active", STATE.view === "turns");
+  $("orchestraView").classList.toggle("active", STATE.view === "orchestra");
+  $("benchmarksView").classList.toggle("active", STATE.view === "benchmarks");
+  $("qualityView").classList.toggle("active", STATE.view === "quality");
+  renderOverview(); renderTurns(); renderOrchestra(); renderBenchmarks(); renderQuality(); renderDrawer();
+  updateRefreshText();
+}
+function updateRefreshText(message) {
+  const stamp = STATE.updated ? STATE.updated.toLocaleTimeString() : "pending";
+  $("updatedText").textContent = "Last updated: " + stamp;
+  $("refreshState").textContent = (message || (LIVE_MODE && $("autoRefresh").checked ? "ON · 5s" : "OFF")) + (LIVE_MODE ? "" : " · static report");
+}
+let refreshTimer = null, refreshInFlight = false;
+async function refreshData() {
+  if (!LIVE_MODE || refreshInFlight) return;
+  refreshInFlight = true; updateRefreshText("refreshing…");
+  try {
+    const response = await fetch("/api/snapshot?ts=" + Date.now(), { cache: "no-store" });
+    if (!response.ok) throw new Error("server returned " + response.status);
+    const next = await response.json();
+    if (!next.schema) throw new Error("invalid dashboard snapshot");
+    DATA = next; STATE.updated = new Date(); renderAll();
+  } catch (error) {
+    updateRefreshText("refresh failed");
+  } finally { refreshInFlight = false; }
+}
+function setAutoRefresh() {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = null;
+  if (LIVE_MODE && $("autoRefresh").checked) refreshTimer = setInterval(refreshData, 5000);
+  updateRefreshText();
+}
+document.addEventListener("click", event => {
+  const nav = event.target.closest("[data-nav-view]");
+  if (nav) { STATE.view = nav.dataset.navView; STATE.page = 1; renderAll(); return; }
+  const period = event.target.closest("[data-period]");
+  if (period) { STATE.period = period.dataset.period; STATE.page = 1; renderAll(); return; }
+  const sort = event.target.closest("[data-sort]");
+  if (sort) { STATE.direction = STATE.sort === sort.dataset.sort ? -STATE.direction : -1; STATE.sort = sort.dataset.sort; STATE.page = 1; renderTurns(); return; }
+  const page = event.target.closest("[data-page]");
+  if (page) { STATE.page += page.dataset.page === "next" ? 1 : -1; renderTurns(); return; }
+  const row = event.target.closest("tr[data-run]");
+  if (row) { STATE.drawer = row.dataset.run; renderDrawer(); return; }
+  const detail = event.target.closest("[data-open-drawer]");
+  if (detail) { STATE.drawer = detail.dataset.openDrawer; renderDrawer(); return; }
+  if (event.target.closest("[data-close-drawer]") || event.target.id === "drawerScrim") { STATE.drawer = null; renderDrawer(); return; }
+});
+["projectFilter", "modelFilter", "speedFilter", "statusFilter", "workersFilter"].forEach(id => $(id).addEventListener("change", event => { STATE[id.replace("Filter", "")] = event.target.value; STATE.page = 1; renderAll(); }));
+$("searchFilter").addEventListener("input", event => { STATE.query = event.target.value; STATE.page = 1; renderAll(); });
+$("exactFilter").addEventListener("change", event => { STATE.exact = event.target.checked; STATE.page = 1; renderAll(); });
+$("refreshNow").addEventListener("click", refreshData);
+$("autoRefresh").addEventListener("change", setAutoRefresh);
+document.addEventListener("keydown", event => { if (event.key === "Escape") { STATE.drawer = null; renderDrawer(); }});
+if (!LIVE_MODE) { $("autoRefresh").checked = false; $("autoRefresh").disabled = true; $("refreshNow").disabled = true; }
+renderAll(); setAutoRefresh();
+if (LIVE_MODE) refreshData();
+</script>
+</body>
+</html>"""
+    return template.replace("__PAYLOAD__", payload).replace("__LIVE_MODE__", "true" if live else "false")
 
 
 def _summary_line(snapshot: dict[str, Any]) -> dict[str, Any]:
