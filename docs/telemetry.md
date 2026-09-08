@@ -54,15 +54,15 @@ the reserved explicit `orchestra_launcher` metadata object. Raw sessions use
 `orchestra_mode = NOT_APPLICABLE`.
 
 Fast mode is recorded separately as `orchestra.speed_mode` (`FAST`, `STANDARD`,
-or `UNKNOWN`) with `orchestra.speed_mode_source`. The collector accepts an
-explicit launcher/runtime `speed_mode`, `service_tier`, or boolean `fast_mode`,
-or an exact `/fast on`/`/fast off` command from the transient
-`UserPromptSubmit` payload. It never stores the prompt. A later turn may carry
-forward a previously observed setting only as `SESSION_LATCH`; `/fast status`,
-an absent field, an unrelated model name, or API `priority` processing provides
-no new state evidence. Without a previous explicit setting, those cases remain
-unknown. Ordinary hooks are not treated as evidence of effective Fast mode
-unless one of those explicit signals is present.
+or `UNKNOWN`) with `orchestra.speed_mode_source`. The benchmark launchers pass a
+versioned, process-scoped `orchestra_launcher_v1` contract through
+`CODEX_ORCHESTRA_LAUNCHER_METADATA`; the contract contains only the explicit
+speed mode, documented `-c` overrides, a normalized configuration hash, and
+path-free launcher version/name. These records use
+`speed_mode_source = LAUNCHER_EXPLICIT`. The collector does not inspect or infer
+speed state from `/fast` commands, UI text, latency, model names, priority
+wording, timestamps, or transcripts. Ordinary hooks without a launcher contract
+remain `UNKNOWN` unless the separately documented exact Fast config is active.
 
 For a fresh session, the collector additionally records `FAST` with source
 `CODEX_CONFIG_EXPLICIT` only when the active `CODEX_HOME/config.toml` contains
@@ -71,6 +71,29 @@ malformed, absent, or otherwise different configuration remains `UNKNOWN`.
 Legacy turn records missing speed fields are normalized only while reading as
 `UNKNOWN` with source `LEGACY_MISSING`; historical ledger rows are never
 rewritten or backfilled.
+
+### Reproducible benchmark launchers
+
+The canonical installer places `codex-standard.cmd`, `codex-fast.cmd`, and their
+small Python dispatch helper under `CODEX_HOME\launchers`. They invoke the
+installed `codex` executable with invocation-scoped overrides:
+
+| Entry point | Codex overrides | Telemetry speed source |
+| --- | --- | --- |
+| `codex-standard.cmd` | `-c service_tier="default"` | `LAUNCHER_EXPLICIT` |
+| `codex-fast.cmd` | `-c service_tier="fast" -c features.fast_mode=true` | `LAUNCHER_EXPLICIT` |
+
+The launchers reject user-supplied overrides for `service_tier` and
+`features.fast_mode`, so the benchmark contract cannot be silently superseded.
+User profile/model/effort arguments are forwarded unchanged. The process-scoped
+metadata is not inherited by the caller after the Codex child exits, and the
+normal `codex` command remains unchanged.
+
+Certified FAST-vs-STANDARD analytics must use only
+`speed_mode_source = LAUNCHER_EXPLICIT`. Use `report --speed-benchmark`; it
+excludes `UNKNOWN`, legacy, config-only, and other non-launcher records from the
+comparison while leaving those records available to ordinary descriptive reports.
+Do not use `/fast on` or `/fast off` mid-session in a certified benchmark.
 
 ### Stable usage adapters
 
@@ -195,10 +218,11 @@ No routing recommendation or composite quality score is emitted.
 
 ## Installation boundary
 
-The canonical installer copies only the collector and merged lifecycle hooks
-into an explicitly selected `CODEX_HOME`. Validate installation in a temporary
-home first with install, verify, and a second-install idempotence check. Do not
-install or trust hooks in a real home without explicit user authorization.
+The canonical installer copies the collector, benchmark launcher entry points,
+and merged lifecycle hooks into an explicitly selected `CODEX_HOME`. Validate
+installation in a temporary home first with install, verify, and a second-install
+idempotence check. Do not install or trust hooks in a real home without explicit
+user authorization.
 
 ## Validation
 

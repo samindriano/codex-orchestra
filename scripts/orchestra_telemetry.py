@@ -50,6 +50,7 @@ RECORD_TYPES = {
 MODES = {"DIRECT", "LIGHT", "HEAVY", "MANUAL", "NOT_APPLICABLE", "UNKNOWN"}
 SPEED_MODES = {"FAST", "STANDARD", "UNKNOWN"}
 SPEED_MODE_SOURCES = {
+    "LAUNCHER_EXPLICIT",
     "EXPLICIT_COMMAND",
     "ORCHESTRA_LAUNCHER",
     "STABLE_RUNTIME_METADATA",
@@ -100,6 +101,9 @@ TURN_STATUSES = {"STARTED", "COMPLETED", "INTERRUPTED", "FAILED", "UNKNOWN"}
 _LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@_+-]{0,79}$")
 _MODEL_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.@+:/-]{0,119}$")
 _DISABLE_VALUES = {"0", "false", "off", "disabled", "no"}
+_LAUNCHER_METADATA_ENV = "CODEX_ORCHESTRA_LAUNCHER_METADATA"
+_LAUNCHER_METADATA_SCHEMA = "orchestra_launcher_v1"
+_LAUNCHER_METADATA_MAX_BYTES = 8192
 
 
 class TelemetryError(RuntimeError):
@@ -308,9 +312,9 @@ def _allowed_fields(record_type: str) -> set[str]:
     fields = {
         "run_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "economics", "measurement", "measurement_generation", "session_id", "turn_id"},
         "turn_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "economics", "measurement", "measurement_generation", "session_id", "turn_id", "boundary_source", "turn_status"},
-        "session_observed": {"session_id", "lifecycle", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_generation", "measurement_quality"},
+        "session_observed": {"session_id", "lifecycle", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "launcher", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_generation", "measurement_quality"},
         "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "source_capability", "usage_source", "usage_quality", "session_id", "thread_id", "turn_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement", "measurement_generation"},
-        "metadata_observed": {"run_id", "source_kind", "session_id", "turn_id", "measurement_generation", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_quality"},
+        "metadata_observed": {"run_id", "source_kind", "session_id", "turn_id", "measurement_generation", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "launcher", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_quality"},
         "worker_observed": {"run_id", "session_id", "turn_id", "measurement_generation", "worker_id", "agent_type", "model", "reasoning_effort", "reasoning_effort_source", "launch_status", "measurement_quality"},
         "interruption_observed": {"run_id", "session_id", "thread_id", "turn_id", "measurement_generation", "reason", "measurement_quality"},
         "run_finalize": {"run_id", "ended_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "measurement", "measurement_generation", "session_id", "turn_id"},
@@ -493,6 +497,7 @@ def create_run(
     turn_status: str | None = None,
     speed_mode: str = "UNKNOWN",
     speed_mode_source: str = "NONE",
+    launcher_contract: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if record_type not in {"run_start", "turn_start"}:
         raise TelemetryError("create_run record_type must be run_start or turn_start")
@@ -543,6 +548,7 @@ def create_run(
         "mode": _enum(mode, MODES, field="orchestra.mode"),
         "speed_mode": _enum(speed_mode, SPEED_MODES, field="orchestra.speed_mode"),
         "speed_mode_source": _enum(speed_mode_source, SPEED_MODE_SOURCES, field="orchestra.speed_mode_source"),
+        "launcher": launcher_contract,
         "root": root,
         "requested_worker_count": _nonnegative_int(requested_worker_count, field="requested_worker_count"),
         "actual_worker_count": _nonnegative_int(actual_worker_count, field="actual_worker_count"),
@@ -1162,6 +1168,9 @@ def _launcher_metadata(event: dict[str, Any]) -> dict[str, Any]:
     """
 
     raw = event.get("orchestra_launcher")
+    from_environment = not isinstance(raw, dict)
+    if from_environment:
+        raw = _launcher_environment_payload()
     if not isinstance(raw, dict):
         return {}
     result: dict[str, Any] = {}
@@ -1175,9 +1184,12 @@ def _launcher_metadata(event: dict[str, Any]) -> dict[str, Any]:
     if isinstance(raw.get("usage"), dict):
         result["usage"] = raw["usage"]
     speed_mode = _speed_mode_from_explicit_fields(raw)
-    if speed_mode is not None:
+    contract = _launcher_contract(raw, require_explicit_source=from_environment)
+    if speed_mode is not None and (not from_environment or contract is not None):
         result["speed_mode"] = speed_mode
-        result["speed_mode_source"] = "ORCHESTRA_LAUNCHER"
+        result["speed_mode_source"] = str(raw.get("speed_mode_source") or "ORCHESTRA_LAUNCHER")
+    if contract is not None:
+        result["contract"] = contract
     return result
 
 
@@ -1191,7 +1203,7 @@ def _speed_mode_from_value(value: Any) -> str | None:
     candidate = value.strip().upper()
     if candidate in {"FAST", "ON"}:
         return "FAST"
-    if candidate in {"STANDARD", "OFF"}:
+    if candidate in {"STANDARD", "DEFAULT", "OFF"}:
         return "STANDARD"
     # API priority is not Codex Fast mode.  Do not reverse-infer one from the other.
     return None
@@ -1210,27 +1222,6 @@ def _speed_mode_from_explicit_fields(fields: dict[str, Any]) -> str | None:
     if not signals or len(set(signals)) != 1 or signals[0] == "UNKNOWN":
         return None
     return signals[0]
-
-
-def _speed_mode_from_command(event: dict[str, Any]) -> str | None:
-    """Parse an exact speed command transiently; the prompt is never persisted."""
-
-    if event.get("hook_event_name") != "UserPromptSubmit":
-        return None
-    prompt = event.get("prompt")
-    if not isinstance(prompt, str):
-        return None
-    match = re.fullmatch(r"\s*/fast\s+(on|off|status)\s*", prompt, flags=re.IGNORECASE)
-    if match is None:
-        return None
-    command = match.group(1).lower()
-    if command == "on":
-        return "FAST"
-    if command == "off":
-        return "STANDARD"
-    # `/fast status` reports state through the UI; the hook does not receive that
-    # output, so status alone must not be treated as evidence of either state.
-    return None
 
 
 def _codex_config_speed_mode() -> str | None:
@@ -1254,6 +1245,71 @@ def _codex_config_speed_mode() -> str | None:
     return None
 
 
+def _launcher_contract(raw: Any, *, require_explicit_source: bool = False) -> dict[str, Any] | None:
+    """Keep only the path-free, versioned launcher contract fields."""
+
+    if not isinstance(raw, dict):
+        return None
+    if require_explicit_source and raw.get("schema") != _LAUNCHER_METADATA_SCHEMA:
+        return None
+    mode = _speed_mode_from_value(raw.get("speed_mode"))
+    source = raw.get("speed_mode_source")
+    if mode not in {"FAST", "STANDARD"}:
+        return None
+    if source != "LAUNCHER_EXPLICIT" and require_explicit_source:
+        return None
+    contract: dict[str, Any] = {
+        "speed_mode": mode,
+        "speed_mode_source": str(source or "ORCHESTRA_LAUNCHER"),
+    }
+    for field in ("launcher_name", "launcher_version", "service_tier", "config_hash"):
+        value = raw.get(field)
+        if isinstance(value, str) and _LABEL_RE.fullmatch(value):
+            contract[field] = value
+    overrides = raw.get("config_overrides")
+    if isinstance(overrides, list) and all(isinstance(value, str) and len(value) <= 160 for value in overrides):
+        contract["config_overrides"] = list(overrides)
+    if isinstance(raw.get("fast_mode"), bool):
+        contract["fast_mode"] = raw["fast_mode"]
+    if require_explicit_source:
+        required = {"launcher_name", "launcher_version", "service_tier", "config_hash", "config_overrides"}
+        if not required.issubset(contract):
+            return None
+        expected_mode = "FAST" if contract["launcher_name"] == "codex-fast" else "STANDARD" if contract["launcher_name"] == "codex-standard" else None
+        if expected_mode != mode or contract["launcher_version"] != "1":
+            return None
+        expected_overrides = (
+            ['features.fast_mode=true', 'service_tier="fast"']
+            if mode == "FAST"
+            else ['service_tier="default"']
+        )
+        if contract["config_overrides"] != expected_overrides:
+            return None
+        if contract["service_tier"] != ("fast" if mode == "FAST" else "default"):
+            return None
+        if mode == "FAST" and contract.get("fast_mode") is not True:
+            return None
+        if mode == "STANDARD" and "fast_mode" in contract:
+            return None
+        canonical = json.dumps({"config_overrides": expected_overrides}, sort_keys=True, separators=(",", ":"))
+        if contract["config_hash"] != hashlib.sha256(canonical.encode("utf-8")).hexdigest():
+            return None
+    return contract
+
+
+def _launcher_environment_payload() -> dict[str, Any] | None:
+    """Read the small process-scoped contract supplied by a benchmark launcher."""
+
+    raw = os.environ.get(_LAUNCHER_METADATA_ENV)
+    if not isinstance(raw, str) or not raw or len(raw.encode("utf-8", errors="ignore")) > _LAUNCHER_METADATA_MAX_BYTES:
+        return None
+    try:
+        payload = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def _last_session_speed(store: TelemetryStore, session_id: str) -> tuple[str, str] | None:
     """Carry forward only a known state observed by this same session."""
     return _session_speed(store, session_id)
@@ -1266,13 +1322,10 @@ def _speed_metadata(store: TelemetryStore, event: dict[str, Any], launcher: dict
     stable = _speed_mode_from_explicit_fields(event)
     if stable is not None:
         return stable, "STABLE_RUNTIME_METADATA"
-    command = _speed_mode_from_command(event)
-    if command is not None:
-        return command, "EXPLICIT_COMMAND"
     inherited = _last_session_speed(store, _hook_id(event.get("session_id"), field="session_id"))
     if inherited is not None:
         mode, source = inherited
-        return mode, source if source == "CODEX_CONFIG_EXPLICIT" else "SESSION_LATCH"
+        return mode, source if source in {"CODEX_CONFIG_EXPLICIT", "LAUNCHER_EXPLICIT"} else "SESSION_LATCH"
     configured = _codex_config_speed_mode()
     if configured is not None:
         return configured, "CODEX_CONFIG_EXPLICIT"
@@ -1330,6 +1383,7 @@ def _observe_session(store: TelemetryStore, event: dict[str, Any], lifecycle: st
         orchestra_mode=_enum(launcher.get("mode", "NOT_APPLICABLE"), MODES, field="session.mode"),
         speed_mode=speed_mode,
         speed_mode_source=speed_source,
+        launcher=launcher.get("contract"),
         project_kind=project.kind,
         project_label=_label(project.label, field="project_label"),
         project_repo_label=_label(project.repo_label, field="project_repo_label"),
@@ -1395,6 +1449,7 @@ def _ensure_turn(store: TelemetryStore, event: dict[str, Any], *, boundary_sourc
             mode=launcher.get("mode", "NOT_APPLICABLE"),
             speed_mode=resolved_speed_mode,
             speed_mode_source=resolved_speed_source,
+            launcher_contract=launcher.get("contract"),
         )
     except DuplicateRecordError:
         candidates = _turn_candidates(store, session_id, turn_id)
@@ -1841,6 +1896,7 @@ def report(
     group_by: list[str] | None = None,
     include_synthetic: bool = False,
     include_session_level: bool = False,
+    speed_benchmark: bool = False,
 ) -> dict[str, Any]:
     records = store.read()
     runs: dict[str, list[dict[str, Any]]] = {}
@@ -1870,6 +1926,15 @@ def report(
         else {run_id: items for run_id, items in generation_runs.items() if run_id not in synthetic_run_ids}
     )
     folded = [_fold_run(items) for items in report_runs.values()]
+    speed_benchmark_excluded_runs = 0
+    if speed_benchmark:
+        eligible = [
+            run for run in folded
+            if run["orchestra"]["speed_mode_source"] == "LAUNCHER_EXPLICIT"
+            and run["orchestra"]["speed_mode"] in {"FAST", "STANDARD"}
+        ]
+        speed_benchmark_excluded_runs = len(folded) - len(eligible)
+        folded = eligible
     folded.sort(key=lambda item: item["run_id"])
     fields = group_by or ["task_class", "mode", "root_model", "reasoning_effort", "worker_count"]
 
@@ -1931,7 +1996,7 @@ def report(
         })
     return {
         "schema": SCHEMA,
-        "report_kind": "DESCRIPTIVE_OFFLINE",
+        "report_kind": "SPEED_BENCHMARK" if speed_benchmark else "DESCRIPTIVE_OFFLINE",
         "groups": summaries,
         "run_count": len(folded),
         "include_synthetic": include_synthetic,
@@ -1939,6 +2004,8 @@ def report(
         "session_level_run_count": session_level_run_count,
         "synthetic_run_count": len(synthetic_run_ids),
         "synthetic_runs_excluded": 0 if include_synthetic else len(synthetic_run_ids),
+        "speed_benchmark_source": "LAUNCHER_EXPLICIT" if speed_benchmark else None,
+        "speed_benchmark_excluded_runs": speed_benchmark_excluded_runs,
         "legacy_manual_observation_count": len(manual),
         "manual_observations_are_separate": True,
         "routing_recommendations": None,
@@ -2034,6 +2101,7 @@ def _parser() -> argparse.ArgumentParser:
     summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "speed_mode", "speed_mode_source", "root_model", "reasoning_effort", "worker_count", "usage_source", "usage_quality"])
     summary.add_argument("--include-synthetic", action="store_true")
     summary.add_argument("--include-session-level", action="store_true")
+    summary.add_argument("--speed-benchmark", action="store_true", help="include only FAST/STANDARD runs certified by LAUNCHER_EXPLICIT")
     return parser
 
 
@@ -2088,7 +2156,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "import-manual":
             result = import_manual(store, label=args.label, source_note=args.source_note, root_model=args.root_model, reasoning_effort=args.reasoning_effort, mode=args.mode, worker_count=args.worker_count, values={"input_tokens": args.input_tokens, "cached_input_tokens": args.cached_input_tokens, "output_tokens": args.output_tokens, "total_tokens": args.total_tokens}, allowances={"weekly_before": args.weekly_before, "weekly_after": args.weekly_after, "five_hour_before": args.five_hour_before, "five_hour_after": args.five_hour_after})
         elif args.command == "report":
-            _json_print(report(store, group_by=args.group_by, include_synthetic=args.include_synthetic, include_session_level=args.include_session_level))
+            _json_print(report(store, group_by=args.group_by, include_synthetic=args.include_synthetic, include_session_level=args.include_session_level, speed_benchmark=args.speed_benchmark))
             return 0
         else:
             raise TelemetryError(f"unsupported command: {args.command}")

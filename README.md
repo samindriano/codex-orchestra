@@ -82,6 +82,25 @@ Luna, or the reverse. Astra Low and Astra Medium are explicit session/profile
 choices; neither escalates automatically. During a requested bootstrap test the root
 may print a one-line mode marker; ordinary tasks need no bootstrap ceremony.
 
+For reproducible speed experiments, the installer also provides separate Windows
+launcher entry points under `CODEX_HOME\launchers`:
+
+```powershell
+& "$env:CODEX_HOME\launchers\codex-standard.cmd" --profile global-luna
+& "$env:CODEX_HOME\launchers\codex-fast.cmd" --profile global-luna
+```
+
+`codex-standard.cmd` appends `-c service_tier="default"`. `codex-fast.cmd`
+appends `-c service_tier="fast" -c features.fast_mode=true`. Both pass a
+small process-scoped `LAUNCHER_EXPLICIT` metadata contract to the existing hooks;
+they do not edit `config.toml`, change profiles, or alter ordinary `codex`.
+Do not use `/fast on` or `/fast off` during a certified benchmark session. A
+speed benchmark report includes only launcher-certified runs:
+
+```powershell
+python $env:CODEX_HOME\scripts\orchestra_telemetry.py --store $store report --speed-benchmark --group-by speed_mode
+```
+
 Profiles sit below project and CLI overrides. Projects overriding model or developer
 instructions must keep model/policy paired. The desktop model picker alone is not
 a verified profile selector; unprofiled sessions use global safety with DIRECT
