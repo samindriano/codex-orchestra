@@ -101,13 +101,19 @@ class OrchestraTelemetryTests(unittest.TestCase):
         transcript = self.root / "tempting-transcript.jsonl"
         transcript.write_text(json.dumps({"type": "turn.completed", "usage": {"total_tokens": 999999}}) + "\n", encoding="utf-8")
         original_open = Path.open
+        original_read_bytes = Path.read_bytes
 
         def guarded_open(path: Path, *args: object, **kwargs: object):
             if path.resolve() == transcript.resolve():
                 raise AssertionError("automatic telemetry opened transcript_path")
             return original_open(path, *args, **kwargs)
 
-        with patch.object(Path, "open", new=guarded_open):
+        def guarded_read_bytes(path: Path, *args: object, **kwargs: object):
+            if path.resolve() == transcript.resolve():
+                raise AssertionError("automatic telemetry read transcript bytes")
+            return original_read_bytes(path, *args, **kwargs)
+
+        with patch.object(Path, "open", new=guarded_open), patch.object(Path, "read_bytes", new=guarded_read_bytes):
             run_id = self._turn_lifecycle("session-blind", transcript_path=str(transcript))
             final = handle_hook_event(self.store, self._hook("SessionEnd", "session-blind", transcript_path=str(transcript)))
         self.assertEqual(final["status"], "SESSION_ENDED")
@@ -152,6 +158,123 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual(folded["usage_source"], "ORCHESTRA_LAUNCHER")
         self.assertEqual(folded["usage_quality"], "EXACT")
         self.assertEqual(folded["usage"]["total_tokens"], 14)
+
+    def test_fast_commands_are_recorded_without_persisting_prompt_and_latched(self) -> None:
+        handle_hook_event(self.store, self._hook("SessionStart", "session-fast"))
+        started = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-fast", turn_id="fast-command", prompt="  /fast on  "))
+        handle_hook_event(self.store, self._hook("Stop", "session-fast", turn_id="fast-command"))
+        fast = self._fold(str(started["run_id"]))
+        self.assertEqual(fast["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(fast["orchestra"]["speed_mode_source"], "EXPLICIT_COMMAND")
+        self.assertNotIn("/fast", self.store.ledger_path.read_text(encoding="utf-8"))
+
+        next_started = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-fast", turn_id="ordinary", prompt="ordinary work"))
+        handle_hook_event(self.store, self._hook("Stop", "session-fast", turn_id="ordinary"))
+        latched = self._fold(str(next_started["run_id"]))
+        self.assertEqual(latched["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(latched["orchestra"]["speed_mode_source"], "SESSION_LATCH")
+        self.assertNotIn("ordinary work", self.store.ledger_path.read_text(encoding="utf-8"))
+        self.assertEqual(report(self.store, group_by=["speed_mode"])["groups"][0]["group"], {"speed_mode": "FAST"})
+
+    def test_fast_off_overrides_latch_and_status_does_not_claim_state(self) -> None:
+        handle_hook_event(self.store, self._hook("SessionStart", "session-speed-toggle"))
+        first = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-speed-toggle", turn_id="on", prompt="/fast on"))
+        handle_hook_event(self.store, self._hook("Stop", "session-speed-toggle", turn_id="on"))
+        second = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-speed-toggle", turn_id="off", prompt="/fast off"))
+        handle_hook_event(self.store, self._hook("Stop", "session-speed-toggle", turn_id="off"))
+        status = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-speed-toggle", turn_id="status", prompt="/fast status"))
+        handle_hook_event(self.store, self._hook("Stop", "session-speed-toggle", turn_id="status"))
+        self.assertEqual(self._fold(str(first["run_id"]))["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(self._fold(str(second["run_id"]))["orchestra"]["speed_mode"], "STANDARD")
+        self.assertEqual(self._fold(str(status["run_id"]))["orchestra"]["speed_mode"], "STANDARD")
+        self.assertEqual(self._fold(str(status["run_id"]))["orchestra"]["speed_mode_source"], "SESSION_LATCH")
+
+    def test_speed_state_chronology_interruption_resume_and_session_isolation(self) -> None:
+        no_config = self.root / "no-config-home"
+        no_config.mkdir()
+        with patch.dict(os.environ, {"CODEX_HOME": str(no_config)}, clear=False):
+            session_id = "session-speed-chronology"
+            handle_hook_event(self.store, self._hook("SessionStart", session_id))
+
+            def turn(turn_id: str, prompt: str) -> dict[str, object]:
+                started = handle_hook_event(self.store, self._hook("UserPromptSubmit", session_id, turn_id=turn_id, prompt=prompt))
+                handle_hook_event(self.store, self._hook("Stop", session_id, turn_id=turn_id))
+                return self._fold(str(started["run_id"]))
+
+            turn("command-on", "/fast on")
+            ordinary_a = turn("ordinary-A", "ordinary A")
+            ordinary_b = turn("ordinary-B", "ordinary B")
+            status = turn("status", "/fast status")
+            ordinary_c = turn("ordinary-C", "ordinary C")
+            turn("command-off", "/fast off")
+            ordinary_d = turn("ordinary-D", "ordinary D")
+
+            for folded in (ordinary_a, ordinary_b, status, ordinary_c):
+                self.assertEqual(folded["orchestra"]["speed_mode"], "FAST")
+            self.assertEqual(ordinary_d["orchestra"]["speed_mode"], "STANDARD")
+            self.assertEqual(status["orchestra"]["speed_mode_source"], "SESSION_LATCH")
+
+            interrupted = turn("command-on-2", "/fast on")
+            self.assertEqual(interrupted["orchestra"]["speed_mode"], "FAST")
+            interrupted_start = handle_hook_event(self.store, self._hook("UserPromptSubmit", session_id, turn_id="interrupted", prompt="interrupt me"))
+            handle_hook_event(self.store, self._hook("Interrupt", session_id, turn_id="interrupted"))
+            resumed_start = handle_hook_event(self.store, self._hook("UserPromptSubmit", session_id, turn_id="resumed", prompt="resume me"))
+            handle_hook_event(self.store, self._hook("Stop", session_id, turn_id="resumed"))
+            self.assertEqual(self._fold(str(interrupted_start["run_id"]))["orchestra"]["speed_mode"], "FAST")
+            self.assertEqual(self._fold(str(resumed_start["run_id"]))["orchestra"]["speed_mode"], "FAST")
+
+            def concurrent_session(session: str, command: str) -> str:
+                handle_hook_event(self.store, self._hook("SessionStart", session))
+                command_start = handle_hook_event(self.store, self._hook("UserPromptSubmit", session, turn_id="command", prompt=command))
+                handle_hook_event(self.store, self._hook("Stop", session, turn_id="command"))
+                ordinary_start = handle_hook_event(self.store, self._hook("UserPromptSubmit", session, turn_id="ordinary", prompt="not a command"))
+                handle_hook_event(self.store, self._hook("Stop", session, turn_id="ordinary"))
+                return str(ordinary_start["run_id"])
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                on_run, off_run = executor.map(
+                    lambda item: concurrent_session(*item),
+                    (("session-speed-on", "/fast on"), ("session-speed-off", "/fast off")),
+                )
+            self.assertEqual(self._fold(on_run)["orchestra"]["speed_mode"], "FAST")
+            self.assertEqual(self._fold(off_run)["orchestra"]["speed_mode"], "STANDARD")
+
+            fresh_start = handle_hook_event(self.store, self._hook("UserPromptSubmit", "session-speed-fresh", turn_id="ordinary", prompt="fresh session"))
+            handle_hook_event(self.store, self._hook("Stop", "session-speed-fresh", turn_id="ordinary"))
+            fresh = self._fold(str(fresh_start["run_id"]))
+            self.assertEqual(fresh["orchestra"]["speed_mode"], "UNKNOWN")
+            self.assertEqual(fresh["orchestra"]["speed_mode_source"], "NONE")
+
+    def test_speed_metadata_is_explicit_and_priority_does_not_imply_fast(self) -> None:
+        fast_launcher = {"service_tier": "fast", "fast_mode": True}
+        fast = self._turn_lifecycle("session-fast-metadata", orchestra_launcher=fast_launcher)
+        self.assertEqual(self._fold(fast)["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(self._fold(fast)["orchestra"]["speed_mode_source"], "ORCHESTRA_LAUNCHER")
+
+        priority = self._turn_lifecycle("session-priority", service_tier="priority")
+        self.assertEqual(self._fold(priority)["orchestra"]["speed_mode"], "UNKNOWN")
+        self.assertEqual(self._fold(priority)["orchestra"]["speed_mode_source"], "NONE")
+
+        conflicting = self._turn_lifecycle("session-conflicting-speed", orchestra_launcher={"speed_mode": "FAST", "service_tier": "priority"})
+        self.assertEqual(self._fold(conflicting)["orchestra"]["speed_mode"], "UNKNOWN")
+        self.assertEqual(self._fold(conflicting)["orchestra"]["speed_mode_source"], "NONE")
+
+    def test_documented_fast_config_is_a_fresh_session_default_only_when_both_keys_match(self) -> None:
+        config_home = self.root / "codex-home-fast"
+        config_home.mkdir()
+        (config_home / "config.toml").write_text('service_tier = "fast"\n\n[features]\nfast_mode = true\n', encoding="utf-8")
+        with patch.dict(os.environ, {"CODEX_HOME": str(config_home)}, clear=False):
+            configured = self._turn_lifecycle("session-config-fast")
+        folded = self._fold(configured)
+        self.assertEqual(folded["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(folded["orchestra"]["speed_mode_source"], "CODEX_CONFIG_EXPLICIT")
+
+        partial_home = self.root / "codex-home-partial"
+        partial_home.mkdir()
+        (partial_home / "config.toml").write_text('service_tier = "fast"\n', encoding="utf-8")
+        with patch.dict(os.environ, {"CODEX_HOME": str(partial_home)}, clear=False):
+            partial = self._turn_lifecycle("session-config-partial")
+        self.assertEqual(self._fold(partial)["orchestra"]["speed_mode"], "UNKNOWN")
 
     def test_codex_exec_json_adapter_is_exact_and_correlated(self) -> None:
         path = self._exec_json("exec-output.jsonl", "thread-exact", turn_id="turn-exact")

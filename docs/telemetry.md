@@ -53,6 +53,22 @@ or worker counts. They remain `UNKNOWN`/`NONE` unless a canonical launcher sends
 the reserved explicit `orchestra_launcher` metadata object. Raw sessions use
 `orchestra_mode = NOT_APPLICABLE`.
 
+Fast mode is recorded separately as `orchestra.speed_mode` (`FAST`, `STANDARD`,
+or `UNKNOWN`) with `orchestra.speed_mode_source`. The collector accepts an
+explicit launcher/runtime `speed_mode`, `service_tier`, or boolean `fast_mode`,
+or an exact `/fast on`/`/fast off` command from the transient
+`UserPromptSubmit` payload. It never stores the prompt. A later turn may carry
+forward a previously observed setting only as `SESSION_LATCH`; `/fast status`,
+an absent field, an unrelated model name, or API `priority` processing provides
+no new state evidence. Without a previous explicit setting, those cases remain
+unknown. Ordinary hooks are not treated as evidence of effective Fast mode
+unless one of those explicit signals is present.
+
+For a fresh session, the collector additionally records `FAST` with source
+`CODEX_CONFIG_EXPLICIT` only when the active `CODEX_HOME/config.toml` contains
+both `service_tier = "fast"` and `[features].fast_mode = true`. Partial,
+malformed, absent, or otherwise different configuration remains `UNKNOWN`.
+
 ### Stable usage adapters
 
 Usage is populated only by an explicitly correlated machine-readable source:

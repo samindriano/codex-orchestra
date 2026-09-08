@@ -25,6 +25,7 @@ import statistics
 import sys
 import tempfile
 import time
+import tomllib
 import uuid
 from typing import Any, Iterable
 
@@ -47,6 +48,15 @@ RECORD_TYPES = {
     "legacy_manual_observation",
 }
 MODES = {"DIRECT", "LIGHT", "HEAVY", "MANUAL", "NOT_APPLICABLE", "UNKNOWN"}
+SPEED_MODES = {"FAST", "STANDARD", "UNKNOWN"}
+SPEED_MODE_SOURCES = {
+    "EXPLICIT_COMMAND",
+    "ORCHESTRA_LAUNCHER",
+    "STABLE_RUNTIME_METADATA",
+    "SESSION_LATCH",
+    "CODEX_CONFIG_EXPLICIT",
+    "NONE",
+}
 TASK_CLASSES = {
     "CODE_CHANGE",
     "RESEARCH",
@@ -235,9 +245,12 @@ def _record(record_type: str, **fields: Any) -> dict[str, Any]:
 
 
 def default_store_root() -> Path:
+    return _codex_home_path() / "orchestra-telemetry"
+
+
+def _codex_home_path() -> Path:
     home = os.environ.get("CODEX_HOME")
-    base = Path(home).expanduser() if home else Path.home() / ".codex"
-    return base / "orchestra-telemetry"
+    return Path(home).expanduser() if home else Path.home() / ".codex"
 
 
 def _ensure_private_dir(path: Path) -> None:
@@ -294,9 +307,9 @@ def _allowed_fields(record_type: str) -> set[str]:
     fields = {
         "run_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "economics", "measurement", "measurement_generation", "session_id", "turn_id"},
         "turn_start": {"run_id", "task", "orchestra", "started_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "economics", "measurement", "measurement_generation", "session_id", "turn_id", "boundary_source", "turn_status"},
-        "session_observed": {"session_id", "lifecycle", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_generation", "measurement_quality"},
+        "session_observed": {"session_id", "lifecycle", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_generation", "measurement_quality"},
         "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "source_capability", "usage_source", "usage_quality", "session_id", "thread_id", "turn_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement", "measurement_generation"},
-        "metadata_observed": {"run_id", "source_kind", "session_id", "turn_id", "measurement_generation", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_quality"},
+        "metadata_observed": {"run_id", "source_kind", "session_id", "turn_id", "measurement_generation", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_quality"},
         "worker_observed": {"run_id", "session_id", "turn_id", "measurement_generation", "worker_id", "agent_type", "model", "reasoning_effort", "reasoning_effort_source", "launch_status", "measurement_quality"},
         "interruption_observed": {"run_id", "session_id", "thread_id", "turn_id", "measurement_generation", "reason", "measurement_quality"},
         "run_finalize": {"run_id", "ended_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "measurement", "measurement_generation", "session_id", "turn_id"},
@@ -477,6 +490,8 @@ def create_run(
     turn_id: str | None = None,
     boundary_source: str | None = None,
     turn_status: str | None = None,
+    speed_mode: str = "UNKNOWN",
+    speed_mode_source: str = "NONE",
 ) -> dict[str, Any]:
     if record_type not in {"run_start", "turn_start"}:
         raise TelemetryError("create_run record_type must be run_start or turn_start")
@@ -525,6 +540,8 @@ def create_run(
         actual_worker_count = len(worker_list)
     orchestra = {
         "mode": _enum(mode, MODES, field="orchestra.mode"),
+        "speed_mode": _enum(speed_mode, SPEED_MODES, field="orchestra.speed_mode"),
+        "speed_mode_source": _enum(speed_mode_source, SPEED_MODE_SOURCES, field="orchestra.speed_mode_source"),
         "root": root,
         "requested_worker_count": _nonnegative_int(requested_worker_count, field="requested_worker_count"),
         "actual_worker_count": _nonnegative_int(actual_worker_count, field="actual_worker_count"),
@@ -958,6 +975,8 @@ def observe_metadata(
     reasoning_effort_source: str = "NONE",
     profile: str | None = None,
     orchestra_mode: str | None = None,
+    speed_mode: str | None = None,
+    speed_mode_source: str = "NONE",
     project_kind: str | None = None,
     project_label: str | None = None,
     project_repo_label: str | None = None,
@@ -969,6 +988,8 @@ def observe_metadata(
     measurement_quality: str = "EXACT_MACHINE_READABLE",
 ) -> dict[str, Any]:
     store.run_records(run_id)
+    normalized_speed_mode = _enum(speed_mode, SPEED_MODES, field="speed_mode") if speed_mode else None
+    normalized_speed_source = _enum(speed_mode_source, SPEED_MODE_SOURCES, field="speed_mode_source") if normalized_speed_mode else "NONE"
     return store.append(_record(
         "metadata_observed",
         run_id=run_id,
@@ -981,6 +1002,8 @@ def observe_metadata(
         reasoning_effort_source=_enum(reasoning_effort_source, REASONING_EFFORT_SOURCES, field="reasoning_effort_source"),
         profile=_label(profile, field="profile"),
         orchestra_mode=_enum(orchestra_mode, MODES, field="orchestra_mode") if orchestra_mode else None,
+        speed_mode=normalized_speed_mode,
+        speed_mode_source=normalized_speed_source,
         project_kind=_enum(project_kind, PROJECT_KINDS, field="project_kind") if project_kind else None,
         project_label=_label(project_label, field="project_label"),
         project_repo_label=_label(project_repo_label, field="project_repo_label"),
@@ -1150,7 +1173,109 @@ def _launcher_metadata(event: dict[str, Any]) -> dict[str, Any]:
         result["reasoning_effort_source"] = "LAUNCHER"
     if isinstance(raw.get("usage"), dict):
         result["usage"] = raw["usage"]
+    speed_mode = _speed_mode_from_explicit_fields(raw)
+    if speed_mode is not None:
+        result["speed_mode"] = speed_mode
+        result["speed_mode_source"] = "ORCHESTRA_LAUNCHER"
     return result
+
+
+def _speed_mode_from_value(value: Any) -> str | None:
+    """Normalize one explicit speed signal; unrelated service tiers stay unknown."""
+
+    if isinstance(value, bool):
+        return "FAST" if value else "STANDARD"
+    if not isinstance(value, str):
+        return None
+    candidate = value.strip().upper()
+    if candidate in {"FAST", "ON"}:
+        return "FAST"
+    if candidate in {"STANDARD", "OFF"}:
+        return "STANDARD"
+    # API priority is not Codex Fast mode.  Do not reverse-infer one from the other.
+    return None
+
+
+def _speed_mode_from_explicit_fields(fields: dict[str, Any]) -> str | None:
+    """Use only explicit speed fields, rejecting conflicting declarations."""
+
+    signals: list[str] = []
+    if "speed_mode" in fields:
+        signals.append(_speed_mode_from_value(fields["speed_mode"]) or "UNKNOWN")
+    if "service_tier" in fields:
+        signals.append(_speed_mode_from_value(fields["service_tier"]) or "UNKNOWN")
+    if "fast_mode" in fields:
+        signals.append(_speed_mode_from_value(fields["fast_mode"]) or "UNKNOWN")
+    if not signals or len(set(signals)) != 1 or signals[0] == "UNKNOWN":
+        return None
+    return signals[0]
+
+
+def _speed_mode_from_command(event: dict[str, Any]) -> str | None:
+    """Parse an exact speed command transiently; the prompt is never persisted."""
+
+    if event.get("hook_event_name") != "UserPromptSubmit":
+        return None
+    prompt = event.get("prompt")
+    if not isinstance(prompt, str):
+        return None
+    match = re.fullmatch(r"\s*/fast\s+(on|off|status)\s*", prompt, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    command = match.group(1).lower()
+    if command == "on":
+        return "FAST"
+    if command == "off":
+        return "STANDARD"
+    # `/fast status` reports state through the UI; the hook does not receive that
+    # output, so status alone must not be treated as evidence of either state.
+    return None
+
+
+def _codex_config_speed_mode() -> str | None:
+    """Read only the documented two-key Fast default from CODEX_HOME/config.toml."""
+
+    config_path = _codex_home_path() / "config.toml"
+    if config_path.is_symlink() or not config_path.is_file():
+        return None
+    try:
+        with config_path.open("rb") as handle:
+            config = tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    features = config.get("features")
+    if (
+        config.get("service_tier") == "fast"
+        and isinstance(features, dict)
+        and features.get("fast_mode") is True
+    ):
+        return "FAST"
+    return None
+
+
+def _last_session_speed(store: TelemetryStore, session_id: str) -> tuple[str, str] | None:
+    """Carry forward only a known state observed by this same session."""
+    return _session_speed(store, session_id)
+
+
+def _speed_metadata(store: TelemetryStore, event: dict[str, Any], launcher: dict[str, Any]) -> tuple[str, str]:
+    explicit = launcher.get("speed_mode")
+    if explicit in SPEED_MODES and explicit != "UNKNOWN":
+        return str(explicit), str(launcher.get("speed_mode_source", "ORCHESTRA_LAUNCHER"))
+    stable = _speed_mode_from_explicit_fields(event)
+    if stable is not None:
+        return stable, "STABLE_RUNTIME_METADATA"
+    command = _speed_mode_from_command(event)
+    if command is not None:
+        return command, "EXPLICIT_COMMAND"
+    inherited = _last_session_speed(store, _hook_id(event.get("session_id"), field="session_id"))
+    if inherited is not None:
+        mode, source = inherited
+        return mode, source if source == "CODEX_CONFIG_EXPLICIT" else "SESSION_LATCH"
+    configured = _codex_config_speed_mode()
+    if configured is not None:
+        return configured, "CODEX_CONFIG_EXPLICIT"
+    return "UNKNOWN", "NONE"
 
 
 def _hook_id(value: Any, *, field: str) -> str:
@@ -1166,6 +1291,24 @@ def _session_records(store: TelemetryStore, session_id: str) -> list[dict[str, A
     ]
 
 
+def _session_speed(store: TelemetryStore, session_id: str) -> tuple[str, str] | None:
+    for record in reversed(store.read()):
+        if record.get("session_id") != session_id:
+            continue
+        if record.get("record_type") == "turn_start":
+            orchestra = record.get("orchestra")
+            value = orchestra.get("speed_mode") if isinstance(orchestra, dict) else None
+            source = orchestra.get("speed_mode_source", "NONE") if isinstance(orchestra, dict) else "NONE"
+        elif record.get("record_type") == "session_observed":
+            value = record.get("speed_mode")
+            source = record.get("speed_mode_source", "NONE")
+        else:
+            continue
+        if value in {"FAST", "STANDARD"}:
+            return str(value), str(source)
+    return None
+
+
 def _observe_session(store: TelemetryStore, event: dict[str, Any], lifecycle: str) -> dict[str, Any]:
     session_id = _hook_id(event.get("session_id"), field="session_id")
     existing = _session_records(store, session_id)
@@ -1174,6 +1317,7 @@ def _observe_session(store: TelemetryStore, event: dict[str, Any], lifecycle: st
             return record
     project = _project_metadata(event.get("cwd"))
     launcher = _launcher_metadata(event)
+    speed_mode, speed_source = _speed_metadata(store, event, launcher)
     return store.append(_record(
         "session_observed",
         session_id=session_id,
@@ -1183,6 +1327,8 @@ def _observe_session(store: TelemetryStore, event: dict[str, Any], lifecycle: st
         reasoning_effort_source=_enum(launcher.get("reasoning_effort_source", "NONE"), REASONING_EFFORT_SOURCES, field="reasoning_effort_source"),
         profile=_label(launcher.get("profile"), field="profile"),
         orchestra_mode=_enum(launcher.get("mode", "NOT_APPLICABLE"), MODES, field="session.mode"),
+        speed_mode=speed_mode,
+        speed_mode_source=speed_source,
         project_kind=project.kind,
         project_label=_label(project.label, field="project_label"),
         project_repo_label=_label(project.repo_label, field="project_repo_label"),
@@ -1222,6 +1368,7 @@ def _ensure_turn(store: TelemetryStore, event: dict[str, Any], *, boundary_sourc
         return candidates[0][0]
     project = _project_metadata(event.get("cwd"))
     launcher = _launcher_metadata(event)
+    resolved_speed_mode, resolved_speed_source = _speed_metadata(store, event, launcher)
     try:
         create_run(
             store,
@@ -1245,6 +1392,8 @@ def _ensure_turn(store: TelemetryStore, event: dict[str, Any], *, boundary_sourc
             profile=launcher.get("profile"),
             reasoning_effort_source=launcher.get("reasoning_effort_source"),
             mode=launcher.get("mode", "NOT_APPLICABLE"),
+            speed_mode=resolved_speed_mode,
+            speed_mode_source=resolved_speed_source,
         )
     except DuplicateRecordError:
         candidates = _turn_candidates(store, session_id, turn_id)
@@ -1594,6 +1743,9 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 run["orchestra"]["root"]["profile"] = record["profile"]
             if record.get("orchestra_mode") is not None:
                 run["orchestra"]["mode"] = record["orchestra_mode"]
+            if record.get("speed_mode") is not None:
+                run["orchestra"]["speed_mode"] = record["speed_mode"]
+                run["orchestra"]["speed_mode_source"] = record.get("speed_mode_source", "NONE")
             if record.get("project_kind") is not None:
                 run["task"]["project_kind"] = record["project_kind"]
             if record.get("project_label") is not None:
@@ -1710,6 +1862,8 @@ def report(
         mapping = {
             "task_class": run["task"]["task_class"],
             "mode": run["orchestra"]["mode"],
+            "speed_mode": run["orchestra"]["speed_mode"],
+            "speed_mode_source": run["orchestra"]["speed_mode_source"],
             "root_model": run["orchestra"]["root"]["model"] or "UNKNOWN",
             "reasoning_effort": run["orchestra"]["root"]["reasoning_effort"] or "UNKNOWN",
             "worker_count": run["orchestra"]["actual_worker_count"],
@@ -1792,6 +1946,8 @@ def _parser() -> argparse.ArgumentParser:
     create.add_argument("--task-class", choices=sorted(TASK_CLASSES), default="UNKNOWN")
     create.add_argument("--complexity", choices=sorted(COMPLEXITIES), default="UNKNOWN")
     create.add_argument("--mode", choices=sorted(MODES), default="UNKNOWN")
+    create.add_argument("--speed-mode", choices=sorted(SPEED_MODES), default="UNKNOWN")
+    create.add_argument("--speed-mode-source", choices=sorted(SPEED_MODE_SOURCES), default="NONE")
     create.add_argument("--root-model")
     create.add_argument("--root-reasoning-effort")
     create.add_argument("--profile")
@@ -1860,7 +2016,7 @@ def _parser() -> argparse.ArgumentParser:
         manual.add_argument("--" + name, type=float)
 
     summary = sub.add_parser("report")
-    summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "root_model", "reasoning_effort", "worker_count", "usage_source", "usage_quality"])
+    summary.add_argument("--group-by", action="append", choices=["task_class", "mode", "speed_mode", "speed_mode_source", "root_model", "reasoning_effort", "worker_count", "usage_source", "usage_quality"])
     summary.add_argument("--include-synthetic", action="store_true")
     summary.add_argument("--include-session-level", action="store_true")
     return parser
@@ -1886,7 +2042,7 @@ def main(argv: list[str] | None = None) -> int:
                 if len(parts) != 3:
                     raise TelemetryError("--worker must be MODEL:EFFORT:STATUS")
                 workers.append({"model": parts[0], "reasoning_effort": parts[1], "launch_status": parts[2]})
-            result = create_run(store, task_label=args.task_label, task_id=args.task_id, project_label=args.project_label, task_class=args.task_class, complexity=args.complexity, mode=args.mode, root_model=args.root_model, root_reasoning_effort=args.root_reasoning_effort, profile=args.profile, reasoning_effort_source=args.reasoning_effort_source, requested_worker_count=args.requested_worker_count, actual_worker_count=args.actual_worker_count, workers=workers, max_concurrency=args.max_concurrency, run_id=args.run_id)
+            result = create_run(store, task_label=args.task_label, task_id=args.task_id, project_label=args.project_label, task_class=args.task_class, complexity=args.complexity, mode=args.mode, speed_mode=args.speed_mode, speed_mode_source=args.speed_mode_source, root_model=args.root_model, root_reasoning_effort=args.root_reasoning_effort, profile=args.profile, reasoning_effort_source=args.reasoning_effort_source, requested_worker_count=args.requested_worker_count, actual_worker_count=args.actual_worker_count, workers=workers, max_concurrency=args.max_concurrency, run_id=args.run_id)
         elif args.command == "ingest-exec-json":
             result = ingest_codex_exec_json(store, args.run_id, args.source_file, expected_thread_id=args.thread_id, expected_turn_id=args.turn_id)
         elif args.command == "ingest-synthetic":
