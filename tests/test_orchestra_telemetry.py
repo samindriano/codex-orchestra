@@ -78,6 +78,58 @@ class OrchestraTelemetryTests(unittest.TestCase):
     def _fold(self, run_id: str) -> dict[str, object]:
         return __import__("scripts.orchestra_telemetry", fromlist=["_fold_run"])._fold_run(self.store.run_records(run_id))
 
+    def _append_legacy_start(
+        self,
+        run_id: str,
+        *,
+        task_label: str,
+        measurement_generation: str,
+        session_id: str,
+        turn_id: str | None = None,
+    ) -> str:
+        fixture_store = TelemetryStore(self.root / f"{run_id}-fixture")
+        record = create_run(
+            fixture_store,
+            task_label=task_label,
+            task_class="CODE_CHANGE",
+            mode="DIRECT",
+            run_id=run_id,
+            record_type="turn_start" if turn_id else "run_start",
+            measurement_generation=measurement_generation,
+            session_id=session_id,
+            turn_id=turn_id,
+        )
+        legacy = json.loads(json.dumps(record))
+        del legacy["orchestra"]["speed_mode"]
+        del legacy["orchestra"]["speed_mode_source"]
+        self.store.append(legacy, unique_run_id=True)
+        return run_id
+
+    def _completed_turn(self, run_id: str, *, session_id: str, speed_mode: str, speed_mode_source: str) -> str:
+        create_run(
+            self.store,
+            task_label=run_id,
+            task_class="CODE_CHANGE",
+            mode="DIRECT",
+            run_id=run_id,
+            record_type="turn_start",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id=session_id,
+            turn_id=f"{run_id}-turn",
+            speed_mode=speed_mode,
+            speed_mode_source=speed_mode_source,
+        )
+        finalize_run(
+            self.store,
+            run_id,
+            record_type="turn_finalize",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id=session_id,
+            turn_id=f"{run_id}-turn",
+            turn_status="COMPLETED",
+        )
+        return run_id
+
     def test_synthetic_lifecycle_is_zero_model_overhead_and_offline(self) -> None:
         run_id = create_run(self.store, task_label="synthetic-review", task_class="REVIEW", complexity="SMALL", mode="DIRECT", root_model="gpt-5.6-luna", root_reasoning_effort="xhigh")["run_id"]
         ingest_synthetic_usage(self.store, run_id, {"model_requests": 2, "input_tokens": 100, "cached_input_tokens": 20, "output_tokens": 30, "reasoning_tokens": 10, "total_tokens": 130})
@@ -464,6 +516,90 @@ class OrchestraTelemetryTests(unittest.TestCase):
         compatibility = report(self.store, include_session_level=True)
         self.assertEqual(compatibility["run_count"], 1)
         self.assertEqual(compatibility["groups"][0]["runs"], 1)
+
+    def test_mixed_speed_schema_is_normalized_without_mutating_legacy_rows(self) -> None:
+        legacy_turn_id = self._append_legacy_start(
+            "legacy-turn",
+            task_label="legacy-turn",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id="session-legacy",
+            turn_id="legacy-turn-id",
+        )
+        legacy_session_id = self._append_legacy_start(
+            "legacy-session",
+            task_label="legacy-session",
+            measurement_generation="SESSION_LEVEL_V1",
+            session_id="session-level",
+        )
+        finalize_run(
+            self.store,
+            legacy_turn_id,
+            record_type="turn_finalize",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id="session-legacy",
+            turn_id="legacy-turn-id",
+            turn_status="COMPLETED",
+        )
+        finalize_run(self.store, legacy_session_id, measurement_generation="SESSION_LEVEL_V1")
+        before_report = self.store.ledger_path.read_bytes()
+        legacy = self._fold(legacy_turn_id)
+        self.assertEqual(legacy["orchestra"]["speed_mode"], "UNKNOWN")
+        self.assertEqual(legacy["orchestra"]["speed_mode_source"], "LEGACY_MISSING")
+        self.assertEqual(self.store.ledger_path.read_bytes(), before_report)
+
+        fast_id = self._completed_turn("fast-turn", session_id="session-fast", speed_mode="FAST", speed_mode_source="EXPLICIT_COMMAND")
+        standard_id = self._completed_turn("standard-turn", session_id="session-standard", speed_mode="STANDARD", speed_mode_source="EXPLICIT_COMMAND")
+        unknown_id = self._completed_turn("unknown-turn", session_id="session-fast", speed_mode="UNKNOWN", speed_mode_source="NONE")
+        synthetic_id = create_run(
+            self.store,
+            task_label="synthetic-turn",
+            task_class="CODE_CHANGE",
+            mode="DIRECT",
+            run_id="synthetic-turn",
+            record_type="turn_start",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id="session-synthetic",
+            turn_id="synthetic-turn-id",
+        )["run_id"]
+        ingest_synthetic_usage(self.store, synthetic_id, {"total_tokens": 99})
+        finalize_run(
+            self.store,
+            synthetic_id,
+            record_type="turn_finalize",
+            measurement_generation="TURN_LEVEL_V1_2",
+            session_id="session-synthetic",
+            turn_id="synthetic-turn-id",
+            turn_status="COMPLETED",
+        )
+
+        summary = report(self.store)
+        self.assertEqual(summary["run_count"], 4)
+        self.assertEqual(summary["session_level_run_count"], 1)
+        self.assertEqual(summary["synthetic_run_count"], 1)
+        self.assertEqual(summary["synthetic_runs_excluded"], 1)
+        self.assertTrue(all(group["usage_qualified_runs"] == 0 for group in summary["groups"]))
+
+        grouped = report(self.store, group_by=["speed_mode"])
+        by_mode = {group["group"]["speed_mode"]: group for group in grouped["groups"]}
+        self.assertEqual({mode: by_mode[mode]["runs"] for mode in ("FAST", "STANDARD", "UNKNOWN")}, {"FAST": 1, "STANDARD": 1, "UNKNOWN": 2})
+        self.assertEqual(by_mode["FAST"]["usage_qualified_runs"], 0)
+        self.assertEqual(by_mode["STANDARD"]["usage_qualified_runs"], 0)
+        self.assertEqual(by_mode["UNKNOWN"]["usage_qualified_runs"], 0)
+        self.assertNotEqual(self._fold(legacy_turn_id)["orchestra"]["speed_mode"], "STANDARD")
+
+        compatibility = report(self.store, include_session_level=True, group_by=["speed_mode", "speed_mode_source"])
+        self.assertEqual(compatibility["run_count"], 5)
+        self.assertEqual(compatibility["session_level_run_count"], 0)
+        self.assertEqual(compatibility["synthetic_runs_excluded"], 1)
+        self.assertTrue(any(
+            group["group"] == {"speed_mode": "UNKNOWN", "speed_mode_source": "LEGACY_MISSING"}
+            and group["runs"] == 2
+            for group in compatibility["groups"]
+        ))
+        self.assertEqual(self._fold(fast_id)["orchestra"]["speed_mode"], "FAST")
+        self.assertEqual(self._fold(standard_id)["orchestra"]["speed_mode"], "STANDARD")
+        self.assertEqual(self._fold(unknown_id)["orchestra"]["speed_mode"], "UNKNOWN")
+        self.assertEqual(self.store.ledger_path.read_bytes()[:len(before_report)], before_report)
 
     def test_concurrent_appends_remain_valid(self) -> None:
         def write(index: int) -> dict[str, object]:

@@ -68,6 +68,9 @@ For a fresh session, the collector additionally records `FAST` with source
 `CODEX_CONFIG_EXPLICIT` only when the active `CODEX_HOME/config.toml` contains
 both `service_tier = "fast"` and `[features].fast_mode = true`. Partial,
 malformed, absent, or otherwise different configuration remains `UNKNOWN`.
+Legacy turn records missing speed fields are normalized only while reading as
+`UNKNOWN` with source `LEGACY_MISSING`; historical ledger rows are never
+rewritten or backfilled.
 
 ### Stable usage adapters
 

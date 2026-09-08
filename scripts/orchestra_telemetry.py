@@ -55,6 +55,7 @@ SPEED_MODE_SOURCES = {
     "STABLE_RUNTIME_METADATA",
     "SESSION_LATCH",
     "CODEX_CONFIG_EXPLICIT",
+    "LEGACY_MISSING",
     "NONE",
 }
 TASK_CLASSES = {
@@ -1709,6 +1710,19 @@ def _median_with_count(values: Iterable[Any]) -> tuple[float | None, int]:
     return (statistics.median(known) if known else None, len(known))
 
 
+def _normalize_folded_speed_fields(run: dict[str, Any]) -> None:
+    """Supply read-only defaults for records written before speed telemetry."""
+
+    orchestra = run.get("orchestra")
+    if not isinstance(orchestra, dict):
+        return
+    if "speed_mode" not in orchestra:
+        orchestra["speed_mode"] = "UNKNOWN"
+        orchestra["speed_mode_source"] = "LEGACY_MISSING"
+    elif "speed_mode_source" not in orchestra:
+        orchestra["speed_mode_source"] = "LEGACY_MISSING"
+
+
 def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     start = next(r for r in records if r["record_type"] in {"run_start", "turn_start"})
     run = json.loads(json.dumps(start))
@@ -1817,6 +1831,7 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
         run["result"]["first_pass"] = latest["first_pass"]
         run["result"]["rework_required"] = latest["rework_required"]
         run["result"]["successor_run_id"] = latest["successor_run_id"]
+    _normalize_folded_speed_fields(run)
     return run
 
 
