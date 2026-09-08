@@ -4,8 +4,8 @@
 The installer deliberately has a small write surface.  Repository-owned text
 and profile files are copied to their canonical locations; an existing
 ``config.toml`` is edited only at the two root model defaults, the two
-``[agents]`` worker defaults, and, when explicitly requested, the
-context-management capability flag.
+``[agents]`` worker defaults, the local-only native OTel exporter settings,
+and, when explicitly requested, the context-management capability flag.
 """
 
 from __future__ import annotations
@@ -77,6 +77,11 @@ _MANAGED_CONFIG_PATHS = {
     ("model_reasoning_effort",): LUNA_REASONING,
     ("agents", "default_subagent_model"): LUNA_MODEL,
     ("agents", "default_subagent_reasoning_effort"): LUNA_REASONING,
+    ("otel", "environment"): "codex-orchestra-local",
+    ("otel", "log_user_prompt"): False,
+    ("otel", "exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/logs", "protocol": "json"}},
+    ("otel", "metrics_exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/metrics", "protocol": "json"}},
+    ("otel", "trace_exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/traces", "protocol": "json"}},
 }
 _ROLE_CONFIG_PATHS = {
     ("agents", "default", "config_file"): "./agents/default.toml",
@@ -402,6 +407,22 @@ def _ensure_section(text: str, section: str, key: str, rendered: str) -> str:
     return text + f"[{section}]{newline}{key} = {rendered}{newline}"
 
 
+def _toml_render(value: Any) -> str:
+    """Render the small scalar/inline-table values owned by the installer."""
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, dict):
+        parts = []
+        for key, child in value.items():
+            rendered_key = key if re.fullmatch(r"[A-Za-z0-9_-]+", str(key)) else json.dumps(str(key))
+            parts.append(f"{rendered_key} = {_toml_render(child)}")
+        return "{ " + ", ".join(parts) + " }"
+    raise PolicyError(f"unsupported managed TOML value: {value!r}")
+
+
 def _edit_config(config_path: Path, enable_context_management: bool) -> tuple[bytes, bytes, dict[str, Any]]:
     before = config_path.read_bytes() if config_path.exists() else b""
     before_data = _toml_source(config_path, before)
@@ -411,15 +432,15 @@ def _edit_config(config_path: Path, enable_context_management: bool) -> tuple[by
     # a fixture has no existing key/table and avoids broad regex rewrites.
     for path, value in _MANAGED_CONFIG_PATHS.items():
         if len(path) == 1:
-            text = _replace_key_at_top_level(text, path[0], json.dumps(value))
+            text = _replace_key_at_top_level(text, path[0], _toml_render(value))
             continue
         section, key = path
         lines, ranges = _section_ranges(text)
         if section in ranges:
-            _replace_key_in_section(lines, ranges, section, key, json.dumps(value))
+            _replace_key_in_section(lines, ranges, section, key, _toml_render(value))
             text = "".join(lines)
         else:
-            text = _ensure_section(text, section, key, json.dumps(value))
+            text = _ensure_section(text, section, key, _toml_render(value))
 
     # A newly created base config needs role pins so the installed legacy
     # ``./agents/*.toml`` files are actually reachable.  Existing configs are
@@ -427,7 +448,7 @@ def _edit_config(config_path: Path, enable_context_management: bool) -> tuple[by
     if not before:
         for path, value in _ROLE_CONFIG_PATHS.items():
             section = ".".join(path[:-1])
-            text = _ensure_section(text, section, path[-1], json.dumps(value))
+            text = _ensure_section(text, section, path[-1], _toml_render(value))
 
     if enable_context_management:
         section = "features.context_management"

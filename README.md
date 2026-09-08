@@ -153,9 +153,12 @@ git diff --check
 `docs/telemetry.md` describes the local-only `orchestra_telemetry_v1` collector.
 When this policy is installed, `hooks.json` adds fail-open lifecycle hooks that
 keep session context separate from exact `UserPromptSubmit` → `Stop` turn
-records and link subagents by `turn_id`. Interactive token usage remains
-`UNKNOWN` unless an exact machine-readable adapter supplies it. The collector
-never adds model requests, workers, prompts, or context, preserves existing user
-hooks, and does not change orchestration routing. Review and trust the installed
-hooks once in Codex's `/hooks` interface; set
+records and link subagents by `turn_id`. Native interactive usage is captured
+from canonical local `session_task.turn` OTel spans when the exact
+`thread.id + turn.id` join is available; otherwise it remains `UNKNOWN`. The
+collector never adds model requests, model workers, prompts, or context,
+preserves existing user hooks, and does not change orchestration routing. OTel
+export is loopback-only with prompt logging disabled, and the receiver starts
+idempotently from `SessionStart`. Review and trust the installed hooks once in
+Codex's `/hooks` interface; set
 `CODEX_ORCHESTRA_TELEMETRY=0` for a run-level escape hatch.

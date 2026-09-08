@@ -216,6 +216,15 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertTrue(config["features"]["context_management"]["experimental_mode"])
         self.assertEqual(config["agents"]["worker"]["config_file"], "./agents/worker.toml")
 
+    def test_install_configures_loopback_native_otel_without_prompt_logging(self) -> None:
+        self._write_config()
+        global_policy.install(self.home, source_root=self.source)
+        config = global_policy._toml_bytes(self.home / "config.toml")
+        self.assertEqual(config["otel"]["environment"], "codex-orchestra-local")
+        self.assertFalse(config["otel"]["log_user_prompt"])
+        self.assertEqual(config["otel"]["trace_exporter"]["otlp-http"]["endpoint"], "http://127.0.0.1:4318/v1/traces")
+        self.assertEqual(config["otel"]["metrics_exporter"]["otlp-http"]["endpoint"], "http://127.0.0.1:4318/v1/metrics")
+
     def test_unrelated_skill_and_config_settings_are_preserved(self) -> None:
         self._write_config()
         unrelated = self.home / "skills/custom/SKILL.md"

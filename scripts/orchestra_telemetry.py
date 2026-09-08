@@ -16,12 +16,15 @@ import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
+import http.client
+import http.server
 import json
 import math
 import os
 from pathlib import Path
 import re
 import statistics
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,7 +75,7 @@ TASK_CLASSES = {
 }
 COMPLEXITIES = {"SMALL", "MEDIUM", "LARGE", "UNKNOWN"}
 PROJECT_KINDS = {"GIT", "NON_GIT", "NO_PROJECT", "UNKNOWN"}
-USAGE_SOURCES = {"CODEX_EXEC_JSON", "ORCHESTRA_LAUNCHER", "STABLE_RUNTIME_METADATA", "MANUAL", "NONE"}
+USAGE_SOURCES = {"CODEX_EXEC_JSON", "ORCHESTRA_LAUNCHER", "STABLE_RUNTIME_METADATA", "NATIVE_OTEL_TRACE", "MANUAL", "NONE"}
 USAGE_QUALITY = {"EXACT", "PARTIAL", "UNKNOWN"}
 USAGE_SOURCE_CAPABILITIES = {
     "USAGE_SOURCE_SUPPORTED",
@@ -104,6 +107,22 @@ _DISABLE_VALUES = {"0", "false", "off", "disabled", "no"}
 _LAUNCHER_METADATA_ENV = "CODEX_ORCHESTRA_LAUNCHER_METADATA"
 _LAUNCHER_METADATA_SCHEMA = "orchestra_launcher_v1"
 _LAUNCHER_METADATA_MAX_BYTES = 8192
+_OTEL_HOST = "127.0.0.1"
+_OTEL_PORT = 4318
+_OTEL_RECEIVER_PID = "otel-receiver.pid"
+_OTEL_PENDING = "otel-pending.jsonl"
+_OTEL_PENDING_LOCK = "otel-pending.lock"
+_OTEL_MAX_BODY = 8 * 1024 * 1024
+_OTEL_SPAN_NAME = "session_task.turn"
+_OTEL_TOKEN_FIELDS = (
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_write_input_tokens",
+    "non_cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+)
 
 
 class TelemetryError(RuntimeError):
@@ -224,6 +243,7 @@ def _usage(values: dict[str, Any] | None = None) -> dict[str, int | None]:
         "input_tokens",
         "cached_input_tokens",
         "cache_write_input_tokens",
+        "non_cached_input_tokens",
         "output_tokens",
         "reasoning_tokens",
         "reasoning_output_tokens",
@@ -315,7 +335,7 @@ def _allowed_fields(record_type: str) -> set[str]:
         "session_observed": {"session_id", "lifecycle", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "launcher", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_generation", "measurement_quality"},
         "usage_observed": {"run_id", "source_kind", "source_schema", "source_digest", "source_capability", "usage_source", "usage_quality", "session_id", "thread_id", "turn_id", "attribution_role", "worker_id", "usage", "observed_event_count", "measurement", "measurement_generation"},
         "metadata_observed": {"run_id", "source_kind", "session_id", "turn_id", "measurement_generation", "root_model", "root_reasoning_effort", "reasoning_effort_source", "profile", "orchestra_mode", "speed_mode", "speed_mode_source", "launcher", "project_kind", "project_label", "project_repo_label", "project_repo_id", "project_branch", "measurement_quality"},
-        "worker_observed": {"run_id", "session_id", "turn_id", "measurement_generation", "worker_id", "agent_type", "model", "reasoning_effort", "reasoning_effort_source", "launch_status", "measurement_quality"},
+        "worker_observed": {"run_id", "session_id", "turn_id", "measurement_generation", "worker_id", "agent_type", "model", "reasoning_effort", "reasoning_effort_source", "launch_status", "measurement_quality", "native_thread_id", "native_turn_id"},
         "interruption_observed": {"run_id", "session_id", "thread_id", "turn_id", "measurement_generation", "reason", "measurement_quality"},
         "run_finalize": {"run_id", "ended_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "measurement", "measurement_generation", "session_id", "turn_id"},
         "turn_finalize": {"run_id", "ended_at_utc", "usage", "usage_source", "usage_quality", "reasoning_effort_source", "execution", "result", "measurement", "measurement_generation", "session_id", "turn_id", "turn_status"},
@@ -432,6 +452,356 @@ class TelemetryStore:
         if not any(r.get("record_type") in {"run_start", "turn_start"} for r in records):
             raise TelemetryError(f"unknown run_id: {run_id}")
         return records
+
+
+def _otel_scalar(value: Any) -> Any:
+    """Decode one OTLP JSON AnyValue without retaining the original payload."""
+
+    if not isinstance(value, dict):
+        return None
+    for key in ("stringValue", "intValue", "longValue", "doubleValue", "boolValue"):
+        if key in value:
+            candidate = value[key]
+            if key in {"intValue", "longValue"} and isinstance(candidate, str) and candidate.isdigit():
+                return int(candidate)
+            return candidate
+    return None
+
+
+def _otel_attributes(span: dict[str, Any]) -> dict[str, Any]:
+    attributes = span.get("attributes")
+    if not isinstance(attributes, list):
+        return {}
+    result: dict[str, Any] = {}
+    for item in attributes:
+        if not isinstance(item, dict) or not isinstance(item.get("key"), str):
+            continue
+        result[item["key"]] = _otel_scalar(item.get("value"))
+    return result
+
+
+def _otel_span_items(payload: Any) -> list[dict[str, Any]]:
+    """Normalize only canonical aggregate turn spans from OTLP/HTTP JSON."""
+
+    if not isinstance(payload, dict):
+        return []
+    items: list[dict[str, Any]] = []
+    for resource_span in payload.get("resourceSpans", []):
+        if not isinstance(resource_span, dict):
+            continue
+        scopes = resource_span.get("scopeSpans") or resource_span.get("instrumentationLibrarySpans") or []
+        for scope in scopes:
+            if not isinstance(scope, dict):
+                continue
+            for span in scope.get("spans", []):
+                if not isinstance(span, dict) or span.get("name") != _OTEL_SPAN_NAME:
+                    continue
+                attrs = _otel_attributes(span)
+                thread_id = attrs.get("thread.id")
+                turn_id = attrs.get("turn.id")
+                if (
+                    not isinstance(thread_id, str)
+                    or not _LABEL_RE.fullmatch(thread_id)
+                    or not isinstance(turn_id, str)
+                    or not _LABEL_RE.fullmatch(turn_id)
+                ):
+                    # Do not persist arbitrary identity values: a malformed
+                    # or path-like identity is simply not joinable.
+                    continue
+                usage: dict[str, int | None] = {field: None for field in _OTEL_TOKEN_FIELDS}
+                malformed = False
+                for field in _OTEL_TOKEN_FIELDS:
+                    value = attrs.get(f"codex.turn.token_usage.{field}")
+                    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                        malformed = True
+                    else:
+                        usage[field] = value
+                normalized = {
+                    "thread_id": thread_id if isinstance(thread_id, str) and thread_id else None,
+                    "turn_id": turn_id if isinstance(turn_id, str) and turn_id else None,
+                    "usage": usage,
+                    "malformed": malformed,
+                }
+                normalized["source_digest"] = hashlib.sha256(
+                    json.dumps(normalized, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).hexdigest()
+                items.append(normalized)
+    return items
+
+
+def _otel_pending_path(store: TelemetryStore) -> Path:
+    return store.root / _OTEL_PENDING
+
+
+def _read_otel_pending_unlocked(store: TelemetryStore) -> list[dict[str, Any]]:
+    path = _otel_pending_path(store)
+    if not path.exists() or not path.is_file() or path.is_symlink():
+        return []
+    pending: list[dict[str, Any]] = []
+    for line in path.read_bytes().splitlines():
+        try:
+            item = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(item, dict) and isinstance(item.get("source_digest"), str):
+            pending.append(item)
+    return pending
+
+
+def _write_otel_pending_unlocked(store: TelemetryStore, items: list[dict[str, Any]]) -> None:
+    path = _otel_pending_path(store)
+    if not items:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        return
+    _ensure_private_dir(store.root)
+    fd, temporary = tempfile.mkstemp(prefix=".otel-pending.", suffix=".tmp", dir=str(store.root))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            for item in items:
+                handle.write(json.dumps(item, sort_keys=True, separators=(",", ":")).encode("utf-8") + b"\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _otel_append_pending(store: TelemetryStore, item: dict[str, Any]) -> None:
+    with _LedgerLock(store.root / _OTEL_PENDING_LOCK):
+        pending = _read_otel_pending_unlocked(store)
+        digests = {entry.get("source_digest") for entry in pending}
+        if item.get("source_digest") not in digests:
+            pending.append(item)
+            _write_otel_pending_unlocked(store, pending)
+
+
+def _otel_target(store: TelemetryStore, item: dict[str, Any]) -> tuple[str, str | None] | None:
+    thread_id = item.get("thread_id")
+    turn_id = item.get("turn_id")
+    if not isinstance(thread_id, str) or not isinstance(turn_id, str):
+        return None
+    records = store.read()
+    for record in records:
+        if record.get("record_type") == "turn_start" and record.get("session_id") == thread_id and record.get("turn_id") == turn_id:
+            return str(record["run_id"]), None
+    for record in records:
+        if (
+            record.get("record_type") == "worker_observed"
+            and record.get("native_thread_id") == thread_id
+            and record.get("native_turn_id") == turn_id
+        ):
+            return str(record["run_id"]), str(record["worker_id"])
+    return None
+
+
+def _otel_usage_observation(item: dict[str, Any], *, unknown: bool = False) -> UsageObservation:
+    raw_usage = item.get("usage") if isinstance(item.get("usage"), dict) else {}
+    usage = _usage(raw_usage if not unknown else {})
+    usage["model_requests"] = None
+    return UsageObservation(
+        source_digest=str(item["source_digest"]),
+        bytes_read=0,
+        collector_wall_ms=0.0,
+        collector_cpu_ms=0.0,
+        session_id=item.get("thread_id") if isinstance(item.get("thread_id"), str) else None,
+        thread_id=item.get("thread_id") if isinstance(item.get("thread_id"), str) else None,
+        usage=usage,
+        observed_event_count=1,
+        usage_source="NATIVE_OTEL_TRACE",
+        usage_quality="UNKNOWN" if unknown or item.get("malformed") else "EXACT",
+        source_capability="USAGE_SOURCE_SUPPORTED" if not unknown and not item.get("malformed") else "USAGE_SOURCE_UNSTABLE",
+        turn_id=item.get("turn_id") if isinstance(item.get("turn_id"), str) else None,
+    )
+
+
+def _otel_attach(store: TelemetryStore, item: dict[str, Any], target: tuple[str, str | None]) -> None:
+    with _LedgerLock(store.root / "otel-attach.lock"):
+        run_id, worker_id = target
+        records = store.run_records(run_id)
+        same_key = [
+            record for record in records
+            if record.get("record_type") == "usage_observed"
+            and record.get("usage_source") == "NATIVE_OTEL_TRACE"
+            and record.get("thread_id") == item.get("thread_id")
+            and record.get("turn_id") == item.get("turn_id")
+        ]
+        if any(record.get("source_digest") == item.get("source_digest") for record in same_key):
+            return
+        conflict = bool(same_key)
+        observation = _otel_usage_observation(item, unknown=conflict)
+        try:
+            ingest_usage(
+                store,
+                run_id,
+                observation,
+                source_kind="NATIVE_OTEL_TRACE" if not conflict else "NATIVE_OTEL_CONFLICT",
+                source_schema="otel.session_task.turn",
+                attribution_role="WORKER" if worker_id is not None else "ROOT",
+                worker_id=worker_id,
+                turn_id=item.get("turn_id"),
+                measurement_generation="TURN_LEVEL_V1_2",
+            )
+        except DuplicateRecordError:
+            # Delivery can race with another receiver thread.  The source digest
+            # is the idempotency key; the existing record is authoritative.
+            return
+
+
+def _reconcile_otel_pending(store: TelemetryStore) -> int:
+    attached = 0
+    with _LedgerLock(store.root / _OTEL_PENDING_LOCK):
+        pending = _read_otel_pending_unlocked(store)
+        remaining: list[dict[str, Any]] = []
+        for item in pending:
+            target = _otel_target(store, item)
+            if target is None:
+                remaining.append(item)
+                continue
+            _otel_attach(store, item, target)
+            attached += 1
+        _write_otel_pending_unlocked(store, remaining)
+    return attached
+
+
+def ingest_otel_payload(store: TelemetryStore, payload: Any) -> int:
+    """Accept an OTLP payload but persist only normalized aggregate turn data."""
+
+    accepted = 0
+    for item in _otel_span_items(payload):
+        if item.get("thread_id") is None or item.get("turn_id") is None:
+            continue
+        target = _otel_target(store, item)
+        if target is None:
+            _otel_append_pending(store, item)
+        else:
+            _otel_attach(store, item, target)
+            accepted += 1
+    _reconcile_otel_pending(store)
+    return accepted
+
+
+class _OTELServer(http.server.ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+class _OTELHandler(http.server.BaseHTTPRequestHandler):
+    server_version = "CodexOrchestraOTel/1"
+
+    def log_message(self, *_args: Any) -> None:
+        return
+
+    def _reply(self, status: int, body: bytes = b"ok") -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self.path == "/health":
+            self._reply(200, b"codex-orchestra-otel")
+        else:
+            self._reply(404, b"")
+
+    def do_POST(self) -> None:  # noqa: N802
+        length = self.headers.get("Content-Length")
+        try:
+            size = int(length or "0")
+        except ValueError:
+            size = 0
+        if size < 0 or size > _OTEL_MAX_BODY:
+            self._reply(413, b"")
+            return
+        body = self.rfile.read(size)
+        if self.path == "/v1/traces":
+            try:
+                ingest_otel_payload(self.server.store, json.loads(body.decode("utf-8")))  # type: ignore[attr-defined]
+            except Exception:
+                # Export is advisory.  Never turn malformed telemetry into a
+                # failed Codex request or expose raw payloads in diagnostics.
+                pass
+        self._reply(200)
+
+
+def run_otel_receiver(store: TelemetryStore, *, host: str = _OTEL_HOST, port: int = _OTEL_PORT) -> None:
+    _ensure_private_dir(store.root)
+    pid_path = store.root / _OTEL_RECEIVER_PID
+    pid_path.write_text(str(os.getpid()), encoding="ascii")
+    server: _OTELServer | None = None
+    try:
+        server = _OTELServer((host, port), _OTELHandler)
+        server.store = store  # type: ignore[attr-defined]
+        server.serve_forever(poll_interval=0.2)
+    finally:
+        if server is not None:
+            server.server_close()
+        try:
+            if pid_path.read_text(encoding="ascii").strip() == str(os.getpid()):
+                pid_path.unlink()
+        except (FileNotFoundError, OSError):
+            pass
+
+
+def _otel_receiver_healthy(*, host: str = _OTEL_HOST, port: int = _OTEL_PORT) -> bool:
+    try:
+        connection = http.client.HTTPConnection(host, port, timeout=0.15)
+        connection.request("GET", "/health")
+        response = connection.getresponse()
+        healthy = response.status == 200 and response.read(64) == b"codex-orchestra-otel"
+        connection.close()
+        return healthy
+    except OSError:
+        return False
+
+
+def _otel_configured() -> bool:
+    config_path = _codex_home_path() / "config.toml"
+    try:
+        data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError):
+        return False
+    otel = data.get("otel")
+    return isinstance(otel, dict) and isinstance(otel.get("trace_exporter"), dict)
+
+
+def ensure_otel_receiver(store: TelemetryStore, *, host: str = _OTEL_HOST, port: int = _OTEL_PORT) -> bool:
+    """Idempotently start the local receiver from the SessionStart hook."""
+
+    # Explicit alternate stores are used by offline imports/tests and must not
+    # attach to the user's singleton receiver or compete for its port.
+    if store.root.resolve() != default_store_root().resolve():
+        return False
+    if not telemetry_enabled() or not _otel_configured():
+        return False
+    if _otel_receiver_healthy(host=host, port=port):
+        return True
+    with _LedgerLock(store.root / "otel-start.lock"):
+        if _otel_receiver_healthy(host=host, port=port):
+            return True
+        command = [sys.executable, str(Path(__file__).resolve()), "--store", str(store.root), "otel-receiver", "--host", host, "--port", str(port)]
+        kwargs: dict[str, Any] = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "close_fds": True}
+        if os.name == "nt":
+            kwargs["creationflags"] = getattr(subprocess, "DETACHED_PROCESS", 0x00000008) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        else:
+            kwargs["start_new_session"] = True
+        try:
+            subprocess.Popen(command, **kwargs)
+        except OSError:
+            return False
+    deadline = time.monotonic() + 0.6
+    while time.monotonic() < deadline:
+        if _otel_receiver_healthy(host=host, port=port):
+            return True
+        time.sleep(0.03)
+    return False
 
 
 def _empty_execution() -> dict[str, Any]:
@@ -939,6 +1309,7 @@ def _aggregate_usage(records: Iterable[dict[str, Any]]) -> dict[str, int | None]
         "input_tokens",
         "cached_input_tokens",
         "cache_write_input_tokens",
+        "non_cached_input_tokens",
         "output_tokens",
         "reasoning_output_tokens",
         "total_tokens",
@@ -1034,6 +1405,8 @@ def observe_worker(
     reasoning_effort_source: str = "NONE",
     launch_status: str = "UNKNOWN",
     measurement_quality: str = "EXACT_MACHINE_READABLE",
+    native_thread_id: str | None = None,
+    native_turn_id: str | None = None,
 ) -> dict[str, Any]:
     store.run_records(run_id)
     return store.append(_record(
@@ -1049,6 +1422,8 @@ def observe_worker(
         reasoning_effort_source=_enum(reasoning_effort_source, REASONING_EFFORT_SOURCES, field="worker.reasoning_effort_source"),
         launch_status=_enum(launch_status, {"LAUNCHED", "COMPLETED", "CANCELLED", "FAILED", "UNKNOWN"}, field="worker.launch_status"),
         measurement_quality=_label(measurement_quality, field="measurement_quality", required=True),
+        native_thread_id=_label(native_thread_id, field="native_thread_id"),
+        native_turn_id=_label(native_turn_id, field="native_turn_id"),
     ))
 
 
@@ -1490,6 +1865,18 @@ def _observe_launcher_usage(
     return True
 
 
+def _native_worker_ids(event: dict[str, Any]) -> tuple[str | None, str | None]:
+    thread_id = next(
+        (event.get(key) for key in ("native_thread_id", "agent_thread_id", "subagent_thread_id", "worker_thread_id") if isinstance(event.get(key), str) and event.get(key)),
+        None,
+    )
+    turn_id = next(
+        (event.get(key) for key in ("native_turn_id", "agent_turn_id", "subagent_turn_id", "worker_turn_id") if isinstance(event.get(key), str) and event.get(key)),
+        None,
+    )
+    return thread_id, turn_id
+
+
 def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str, Any]:
     """Handle stable Codex lifecycle metadata without reading transcript paths."""
 
@@ -1502,9 +1889,12 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
     if not isinstance(event_name, str) or not isinstance(session_id, str):
         raise TelemetryError("hook input lacks event name or session_id")
     if event_name == "SessionStart":
+        ensure_otel_receiver(store)
+        _reconcile_otel_pending(store)
         record = _observe_session(store, event, "STARTED")
         return {"status": "SESSION_STARTED", "session_id": record["session_id"]}
     if event_name == "SessionEnd":
+        _reconcile_otel_pending(store)
         record = _observe_session(store, event, "ENDED")
         return {"status": "SESSION_ENDED", "session_id": record["session_id"]}
     if event_name not in {"UserPromptSubmit", "Stop", "SubagentStart", "SubagentStop", "Interrupt"}:
@@ -1515,9 +1905,11 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
     boundary_source = "USER_PROMPT_SUBMIT" if event_name == "UserPromptSubmit" else "TURN_HOOK_RECOVERY"
     run_id = _ensure_turn(store, event, boundary_source=boundary_source)
     if event_name == "UserPromptSubmit":
+        _reconcile_otel_pending(store)
         return {"status": "TURN_STARTED", "run_id": run_id, "turn_id": turn_id}
     if event_name == "SubagentStart":
         worker_id = event.get("agent_id") or _derived_label(event.get("agent_type"), fallback="unknown-worker")
+        native_thread_id, native_turn_id = _native_worker_ids(event)
         observe_worker(
             store,
             run_id,
@@ -1530,6 +1922,8 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
             reasoning_effort=launcher.get("reasoning_effort"),
             reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
             launch_status="LAUNCHED",
+            native_thread_id=native_thread_id,
+            native_turn_id=native_turn_id,
         )
         _observe_launcher_usage(
             store,
@@ -1540,9 +1934,11 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
             worker_id=worker_id,
             turn_id=turn_id,
         )
+        _reconcile_otel_pending(store)
         return {"status": "WORKER_STARTED", "run_id": run_id}
     if event_name == "SubagentStop":
         worker_id = event.get("agent_id") or _derived_label(event.get("agent_type"), fallback="unknown-worker")
+        native_thread_id, native_turn_id = _native_worker_ids(event)
         usage_observed = _observe_launcher_usage(
             store,
             run_id,
@@ -1564,7 +1960,10 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
             reasoning_effort=launcher.get("reasoning_effort"),
             reasoning_effort_source=launcher.get("reasoning_effort_source", "NONE"),
             launch_status="COMPLETED",
+            native_thread_id=native_thread_id,
+            native_turn_id=native_turn_id,
         )
+        _reconcile_otel_pending(store)
         return {"status": "WORKER_STOPPED", "run_id": run_id}
     if event_name == "Interrupt":
         observe_interruption(
@@ -1577,10 +1976,12 @@ def handle_hook_event(store: TelemetryStore, event: dict[str, Any]) -> dict[str,
             reason="INTERRUPTED",
         )
         _finalize_turn(store, run_id, session_id=session_id, turn_id=turn_id, turn_status="INTERRUPTED")
+        _reconcile_otel_pending(store)
         return {"status": "TURN_INTERRUPTED", "run_id": run_id, "turn_id": turn_id}
     if event_name == "Stop":
         usage_observed = _observe_launcher_usage(store, run_id, event, launcher, attribution_role="ROOT", turn_id=turn_id)
         _finalize_turn(store, run_id, session_id=session_id, turn_id=turn_id, turn_status="COMPLETED")
+        _reconcile_otel_pending(store)
         return {"status": "TURN_FINALIZED", "run_id": run_id, "turn_id": turn_id, "usage_observed": usage_observed}
     return {"status": "IGNORED", "run_id": run_id, "event": event_name}
 
@@ -1607,9 +2008,21 @@ def _finalize_turn(
             session_id=session_id,
             turn_id=turn_id,
             turn_status=turn_status,
-            usage=_aggregate_usage(record for record in records if record.get("record_type") == "usage_observed"),
-            usage_source=_fold_usage_source(records),
-            usage_quality=_fold_usage_quality(records),
+            usage=_aggregate_usage(
+                record for record in records
+                if record.get("record_type") == "usage_observed"
+                and record.get("attribution_role") != "WORKER"
+            ),
+            usage_source=_fold_usage_source(
+                record for record in records
+                if record.get("record_type") == "usage_observed"
+                and record.get("attribution_role") != "WORKER"
+            ),
+            usage_quality=_fold_usage_quality(
+                record for record in records
+                if record.get("record_type") == "usage_observed"
+                and record.get("attribution_role") != "WORKER"
+            ),
             execution={"abnormal_termination": "INTERRUPTED" if interruptions else None},
             result={"completed": False if interruptions or turn_status != "COMPLETED" else True},
         )
@@ -1792,15 +2205,20 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     snapshots: list[dict[str, Any]] = []
     annotations: list[dict[str, Any]] = []
     workers: dict[str, dict[str, Any]] = {}
-    usage_records: list[dict[str, Any]] = []
+    root_usage_records: list[dict[str, Any]] = []
+    worker_usage_records: dict[str, list[dict[str, Any]]] = {}
     for record in records:
         kind = record["record_type"]
         if kind == "usage_observed":
-            usage_records.append(record)
-            run["usage"] = _aggregate_usage(usage_records)
-            run["usage_source"] = _fold_usage_source(usage_records)
-            run["usage_quality"] = _fold_usage_quality(usage_records)
-            run["measurement"] = record["measurement"]
+            if record.get("attribution_role") == "WORKER" and isinstance(record.get("worker_id"), str):
+                worker_usage_records.setdefault(record["worker_id"], []).append(record)
+            else:
+                root_usage_records.append(record)
+            run["usage"] = _aggregate_usage(root_usage_records)
+            run["usage_source"] = _fold_usage_source(root_usage_records)
+            run["usage_quality"] = _fold_usage_quality(root_usage_records)
+            if "ended_at_utc" not in run:
+                run["measurement"] = record["measurement"]
         elif kind == "metadata_observed":
             if record.get("root_model") is not None:
                 run["orchestra"]["root"]["model"] = record["root_model"]
@@ -1830,12 +2248,14 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "reasoning_effort": record.get("reasoning_effort"),
                 "reasoning_effort_source": record.get("reasoning_effort_source", "NONE"),
                 "launch_status": record.get("launch_status", "UNKNOWN"),
+                "native_thread_id": record.get("native_thread_id"),
+                "native_turn_id": record.get("native_turn_id"),
             }
         elif kind == "interruption_observed":
             run["execution"]["abnormal_termination"] = record.get("reason", "INTERRUPTED")
         elif kind in {"run_finalize", "turn_finalize"}:
             run["ended_at_utc"] = record["ended_at_utc"]
-            run["usage"] = record["usage"]
+            run["usage"] = _usage(record["usage"])
             run["usage_source"] = record.get("usage_source", "NONE")
             run["usage_quality"] = record.get("usage_quality", "UNKNOWN")
             run["reasoning_effort_source"] = record.get("reasoning_effort_source", run.get("reasoning_effort_source", "NONE"))
@@ -1850,6 +2270,11 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
             snapshots.append(record)
         elif kind == "annotation":
             annotations.append(record)
+    for worker_id, worker in workers.items():
+        observations = worker_usage_records.get(worker_id, [])
+        worker["usage"] = _aggregate_usage(observations)
+        worker["usage_source"] = _fold_usage_source(observations)
+        worker["usage_quality"] = _fold_usage_quality(observations)
     if workers:
         run["orchestra"]["workers"] = list(workers.values())
         run["orchestra"]["actual_worker_count"] = len(workers)
@@ -1866,6 +2291,25 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     if generation == "TURN_LEVEL_V1_2":
         run["orchestra"]["attribution_source"] = "CODEX_TURN_HOOKS"
         run["orchestra"]["attribution_quality"] = "ROOT_WORKER_USAGE_PARTIAL" if workers else "ROOT_USAGE_UNKNOWN"
+    run["orchestra"]["root_turn_tokens"] = run["usage"]
+    run["orchestra"]["individual_worker_tokens"] = {
+        worker_id: worker.get("usage", _usage()) for worker_id, worker in workers.items()
+    }
+    worker_totals = [
+        worker.get("usage", {}).get("total_tokens")
+        for worker in workers.values()
+    ]
+    root_total = run["usage"].get("total_tokens")
+    workers_exact = all(
+        worker.get("usage_quality") == "EXACT" and isinstance(total, int)
+        for worker, total in zip(workers.values(), worker_totals)
+    )
+    if run.get("usage_quality") == "EXACT" and isinstance(root_total, int) and workers_exact:
+        run["orchestra"]["orchestra_total_tokens"] = root_total + sum(worker_totals)
+        run["orchestra"]["orchestra_total_quality"] = "EXACT"
+    else:
+        run["orchestra"]["orchestra_total_tokens"] = None
+        run["orchestra"]["orchestra_total_quality"] = "UNKNOWN"
     weekly_pairs = [s for s in snapshots if s.get("weekly_allowance_pp") is not None]
     five_pairs = [s for s in snapshots if s.get("five_hour_allowance_pp") is not None]
     run["economics"] = {
@@ -1971,7 +2415,14 @@ def report(
         median_cached, cached_n = _median_with_count(r["usage"]["cached_input_tokens"] for r in members)
         median_output, output_n = _median_with_count(r["usage"]["output_tokens"] for r in members)
         median_total, total_n = _median_with_count(r["usage"]["total_tokens"] for r in members)
+        median_orchestra_total, orchestra_total_n = _median_with_count(
+            r["orchestra"].get("orchestra_total_tokens") for r in members
+        )
         usage_quality_counts = {quality: sum(r.get("usage_quality") == quality for r in members) for quality in sorted(USAGE_QUALITY)}
+        worker_usage_qualified = sum(
+            any(worker.get("usage_quality") == "EXACT" for worker in r["orchestra"].get("workers", []))
+            for r in members
+        )
         summaries.append({
             "group": dict(zip(fields, key)),
             "runs": len(members),
@@ -1987,8 +2438,13 @@ def report(
             "median_output_tokens_n": output_n,
             "median_total_tokens": median_total,
             "median_total_tokens_n": total_n,
+            "median_orchestra_total_tokens": median_orchestra_total,
+            "median_orchestra_total_tokens_n": orchestra_total_n,
             "usage_total_runs": len(members),
             "usage_qualified_runs": total_n,
+            "root_usage_qualified_runs": total_n,
+            "orchestra_usage_qualified_runs": orchestra_total_n,
+            "worker_usage_qualified_runs": worker_usage_qualified,
             "usage_quality_counts": usage_quality_counts,
             "median_weekly_allowance_pp_consumed": _median(total_allowance),
             "median_five_hour_allowance_pp_consumed": _median(r["economics"]["five_hour_pp_consumed"] for r in members),
@@ -2102,6 +2558,9 @@ def _parser() -> argparse.ArgumentParser:
     summary.add_argument("--include-synthetic", action="store_true")
     summary.add_argument("--include-session-level", action="store_true")
     summary.add_argument("--speed-benchmark", action="store_true", help="include only FAST/STANDARD runs certified by LAUNCHER_EXPLICIT")
+    receiver = sub.add_parser("otel-receiver", help=argparse.SUPPRESS)
+    receiver.add_argument("--host", default=_OTEL_HOST)
+    receiver.add_argument("--port", type=int, default=_OTEL_PORT)
     return parser
 
 
@@ -2109,6 +2568,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     store = TelemetryStore(args.store)
     try:
+        if args.command == "otel-receiver":
+            run_otel_receiver(store, host=args.host, port=args.port)
+            return 0
         if args.command == "hook":
             # Hooks are advisory and fail-open.  Never write hook output to
             # stdout because Codex treats it as model-visible context.

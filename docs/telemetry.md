@@ -1,7 +1,8 @@
 # CODEX ORCHESTRA TELEMETRY V1.2
 
 Telemetry is an optional, local-only JSONL ledger. It is outside the model
-loop, launches no worker, makes no network request, and emits no hook stdout.
+loop, launches no model worker, uses only loopback OTel export, and emits no
+hook stdout.
 The schema remains `orchestra_telemetry_v1` for append-only compatibility.
 
 ## Measurement hierarchy
@@ -104,6 +105,7 @@ Usage is populated only by an explicitly correlated machine-readable source:
 | `CODEX_EXEC_JSON` | Supported when exact `thread.started.thread_id` and, when requested, `turn_id` correlation succeeds | No |
 | `ORCHESTRA_LAUNCHER` | Supported when the canonical launcher supplies the values | Only when supplied |
 | `STABLE_RUNTIME_METADATA` | Reserved for a separately proven stable runtime field | No |
+| `NATIVE_OTEL_TRACE` | Supported for canonical `session_task.turn` spans joined by exact `thread.id + turn.id` | Yes, when local OTel is configured |
 | `MANUAL` | Separate user-supplied historical evidence | No |
 | `NONE` | Safe unknown fallback | Yes, for ordinary interactive sessions |
 
@@ -113,20 +115,21 @@ can require an exact turn ID. It never uses newest-file, timestamp,
 latest-session, or directory-scanning correlation. See the [official
 non-interactive mode documentation](https://learn.chatgpt.com/docs/non-interactive-mode).
 
-### Interactive usage capability audit
+### Native interactive usage
 
-Normal interactive command hooks receive lifecycle metadata but no stable usage
-object. The local 0.153.4 App Server schema does expose
-`thread/tokenUsage/updated` with `threadId`, `turnId`, `last`, and `total`, while
-`turn/completed` exposes turn status. That is a separately connected App Server
-protocol, not a usage payload delivered to ordinary lifecycle hooks. The source
-therefore does not claim exact interactive per-turn tokens. Interactive hook
-usage is `UNKNOWN` unless an explicit launcher or another exact adapter supplies
-it. Do not replace the user's normal workflow with App Server solely for
-telemetry without an approved integration design. The [official App Server
-documentation](https://learn.chatgpt.com/docs/app-server) describes the
-notification surface; the [official hooks documentation](https://learn.chatgpt.com/docs/hooks)
-also warns that transcript format is not a stable hook interface.
+The installed local OTel configuration exports to loopback only, with
+`log_user_prompt = false`. The receiver consumes only trace spans named
+`session_task.turn` and allowlists `thread.id`, `turn.id`, and the canonical
+`codex.turn.token_usage.*` attributes. It joins by exact `(thread.id, turn.id)`;
+it never uses timestamps or SSE-event summation. A turn with multiple
+`response.completed` events therefore contributes one aggregate span.
+
+The receiver starts idempotently from the `SessionStart` hook and continues as a
+small local process. If it is unavailable, malformed, missing identity, or
+conflicting, Codex continues normally and the turn remains `UNKNOWN`. Pending
+normalized spans are reconciled when the lifecycle record appears. Raw OTLP,
+prompts, assistant text, tool contents, code, secrets, and full paths are not
+persisted.
 
 If no supported source is available, all usage values are null and
 `usage_quality = UNKNOWN`. `UNKNOWN` is preferred to unstable inference.
@@ -134,22 +137,24 @@ If no supported source is available, all usage values are null and
 Each usage-bearing record includes:
 
 - `usage_source`: `CODEX_EXEC_JSON`, `ORCHESTRA_LAUNCHER`,
-  `STABLE_RUNTIME_METADATA`, `MANUAL`, or `NONE`;
+  `STABLE_RUNTIME_METADATA`, `NATIVE_OTEL_TRACE`, `MANUAL`, or `NONE`;
 - `usage_quality`: `EXACT`, `PARTIAL`, or `UNKNOWN`;
 - `source_capability`: `USAGE_SOURCE_SUPPORTED`, `USAGE_SOURCE_PARTIAL`,
   `USAGE_SOURCE_UNSTABLE`, or `USAGE_SOURCE_UNAVAILABLE`.
 
 The canonical numeric fields are `input_tokens`, `cached_input_tokens`,
-`output_tokens`, `reasoning_tokens`, and `total_tokens`. Missing values remain
-null; they are never converted to zero.
+`cache_write_input_tokens`, `non_cached_input_tokens`, `output_tokens`,
+`reasoning_output_tokens`, `reasoning_tokens`, and `total_tokens`. Missing
+values remain null; they are never converted to zero.
 
 ## Root and worker attribution
 
 Turn-scoped `SubagentStart`/`SubagentStop` pairs record worker identity, model,
-status, and counts against the exact parent `turn_id`, but do not imply worker
-token usage. `worker_usage = UNKNOWN` unless an independent exact source is
-supplied. If a total usage source includes subordinate work, that inclusion is
-source-defined; the ordinary hook path cannot prove it.
+status, and counts against the exact parent `turn_id`. When the lifecycle event
+also supplies a native worker `(thread.id, turn.id)` pair, the receiver attaches
+the separate native span to that worker. Root usage never includes worker
+usage. `orchestra_total_tokens` is emitted only when root and every included
+worker have exact, deterministic usage; otherwise it remains `UNKNOWN`.
 
 ## Privacy and overhead
 
