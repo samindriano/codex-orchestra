@@ -221,10 +221,41 @@ Token medians include a sample-size field such as
 `median_total_tokens_n`, plus `usage_qualified_runs` and `usage_total_runs`.
 No routing recommendation or composite quality score is emitted.
 
+### Local dashboard
+
+`launchers/orchestra-dashboard.cmd` starts a small standard-library dashboard on
+`127.0.0.1`. It uses the same default exclusions as the report: session-level
+runs, synthetic runs, and legacy manual observations are not folded into the
+turn table. The page contains only path-free labels, lifecycle metadata, and
+token/duration aggregates; it does not open raw transcripts or persist prompt,
+response, tool, code, or secret content.
+
+The optional derived cache is
+`CODEX_HOME\orchestra-telemetry\dashboard-cache.sqlite3`. It contains one
+sanitized dashboard snapshot keyed by the ledger SHA-256 and dashboard version.
+It is never canonical state and can be deleted or rebuilt without changing the
+ledger:
+
+```powershell
+& "$env:CODEX_HOME\launchers\orchestra-dashboard.cmd" --rebuild rebuild
+& "$env:CODEX_HOME\launchers\orchestra-dashboard.cmd" --no-cache report --output .\orchestra-dashboard-report.html
+```
+
+The dashboard leaves missing values as `UNKNOWN`. Exact token aggregates use
+only `usage_quality=EXACT`; the FAST/STANDARD comparison uses only the existing
+`LAUNCHER_EXPLICIT` certification rule. A dashboard process has no writer path
+to telemetry and a failed dashboard read returns an error without affecting
+capture. The live page exposes a manual `Refresh` control, a five-second
+auto-refresh toggle, and the last successful refresh time. Refreshes read the
+latest ledger state without taking the telemetry writer lock; an incomplete
+final JSONL line is ignored until a later refresh completes it, so an UNKNOWN
+turn can later become EXACT when its native OTel enrichment arrives.
+
 ## Installation boundary
 
-The canonical installer copies the collector, benchmark launcher entry points,
-and merged lifecycle hooks into an explicitly selected `CODEX_HOME`. Validate
+The canonical installer copies the collector, read-only dashboard, benchmark
+launcher entry points, and merged lifecycle hooks into an explicitly selected
+`CODEX_HOME`. Validate
 installation in a temporary home first with install, verify, and a second-install
 idempotence check. Do not install or trust hooks in a real home without explicit
 user authorization.

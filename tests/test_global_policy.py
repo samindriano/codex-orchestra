@@ -28,9 +28,11 @@ class GlobalPolicyTests(unittest.TestCase):
         text = {
             "policies/GLOBAL_AGENTS.md": "# Global policy\nCODEX_ORCHESTRA_GLOBAL_POLICY_V1\n",
             "scripts/orchestra_telemetry.py": "#!/usr/bin/env python3\nSYNTHETIC_TELEMETRY_FIXTURE\n",
+            "scripts/orchestra_dashboard.py": "#!/usr/bin/env python3\nSYNTHETIC_DASHBOARD_FIXTURE\n",
             "scripts/codex_benchmark_launcher.py": "#!/usr/bin/env python3\nSYNTHETIC_BENCHMARK_LAUNCHER\n",
             "launchers/codex-standard.cmd": "@echo off\nSYNTHETIC_STANDARD_LAUNCHER\n",
             "launchers/codex-fast.cmd": "@echo off\nSYNTHETIC_FAST_LAUNCHER\n",
+            "launchers/orchestra-dashboard.cmd": "@echo off\nSYNTHETIC_DASHBOARD_LAUNCHER\n",
             "config/hooks.json": json.dumps({
                 "description": "CODEX ORCHESTRA TELEMETRY V1 lifecycle hooks",
                 "hooks": {

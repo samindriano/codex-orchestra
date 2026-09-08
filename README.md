@@ -101,6 +101,23 @@ speed benchmark report includes only launcher-certified runs:
 python $env:CODEX_HOME\scripts\orchestra_telemetry.py --store $store report --speed-benchmark --group-by speed_mode
 ```
 
+The read-only local dashboard is a separate consumer of the frozen ledger:
+
+```powershell
+& "$env:CODEX_HOME\launchers\orchestra-dashboard.cmd"
+& "$env:CODEX_HOME\launchers\orchestra-dashboard.cmd" --no-cache report --output .\orchestra-dashboard-report.html
+```
+
+It binds only to `127.0.0.1`, reads no transcript or conversation content, and
+stores only a rebuildable derived cache at
+`$env:CODEX_HOME\orchestra-telemetry\dashboard-cache.sqlite3`. Use
+`--rebuild` to rebuild that cache from `ledger.jsonl`; `--no-cache` is a
+one-shot read-only mode.
+
+The live page has a manual `Refresh` button and auto-refreshes every five
+seconds by default. The checkbox beside it can turn auto-refresh off; the
+current filters remain selected when a newer snapshot arrives.
+
 Profiles sit below project and CLI overrides. Projects overriding model or developer
 instructions must keep model/policy paired. The desktop model picker alone is not
 a verified profile selector; unprofiled sessions use global safety with DIRECT

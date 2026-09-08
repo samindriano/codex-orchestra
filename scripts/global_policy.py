@@ -35,9 +35,11 @@ _SOURCE_DESTINATIONS = (
     # target.  It is intentionally not a skill or a profile and is not
     # imported by normal Codex startup unless a user invokes it.
     ("scripts/orchestra_telemetry.py", "scripts/orchestra_telemetry.py", "text"),
+    ("scripts/orchestra_dashboard.py", "scripts/orchestra_dashboard.py", "text"),
     ("scripts/codex_benchmark_launcher.py", "launchers/codex_benchmark_launcher.py", "text"),
     ("launchers/codex-standard.cmd", "launchers/codex-standard.cmd", "text"),
     ("launchers/codex-fast.cmd", "launchers/codex-fast.cmd", "text"),
+    ("launchers/orchestra-dashboard.cmd", "launchers/orchestra-dashboard.cmd", "text"),
     ("config/hooks.json", "hooks.json", "hooks"),
     (
         "skills/astra-decision-orchestrator/SKILL.md",
