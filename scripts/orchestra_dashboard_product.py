@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Product-grade read-only UI for Orchestra telemetry.
+"""Highlight-first read-only UI for Orchestra telemetry.
 
-This is a presentation layer over the canonical dashboard fold. It imports the
-existing read/validation/cache implementation and never mutates telemetry.
+Presentation-only layer over scripts/orchestra_dashboard.py. It reuses the
+canonical read/fold/cache semantics and never writes telemetry.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ except ModuleNotFoundError:
     from scripts import orchestra_dashboard as core  # type: ignore
 
 
-PRODUCT_UI_VERSION = "2.0"
+UI_VERSION = "3.0"
 
 
 def _json_for_html(value: Any) -> str:
@@ -36,32 +36,324 @@ def build_html(snapshot: dict[str, Any], *, live: bool) -> str:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Orchestra — Research Console</title>
+<title>Orchestra</title>
 <style>
-:root{color-scheme:dark;--bg:#090b0f;--sidebar:#0c0f14;--surface:#10141b;--line:#242b36;--line2:#313a47;--text:#f3f5f7;--muted:#9aa4b2;--faint:#667180;--cyan:#62c8ff;--cyan2:#91dcff;--cyanSoft:rgba(98,200,255,.11);--green:#61d6a3;--amber:#efc268;--red:#f07d8d;--radius:10px;--shadow:0 16px 40px rgba(0,0,0,.24)}
-*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:13px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}button,input,select{font:inherit}.sidebar{position:fixed;inset:0 auto 0 0;width:228px;background:var(--sidebar);border-right:1px solid #1c222c;padding:20px 14px;display:flex;flex-direction:column;z-index:20}.brand{padding:2px 9px 18px}.brand-mark{display:flex;align-items:center;gap:9px;font-size:15px;font-weight:760;letter-spacing:-.02em}.brand-dot{width:10px;height:10px;border-radius:3px;background:linear-gradient(135deg,var(--cyan),#557bff);box-shadow:0 0 18px rgba(98,200,255,.35)}.brand small{display:block;margin-top:5px;color:var(--faint);font-size:10px}.nav-label{padding:8px 10px;color:#515d6b;font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}.nav-btn{width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;margin:2px 0;border:0;border-radius:7px;background:transparent;color:#8f9aa8;text-align:left;cursor:pointer}.nav-btn:hover{background:#131821;color:#d7dde4}.nav-btn.active{background:#171e28;color:#fff}.nav-icon{width:18px;color:#687786;text-align:center}.nav-btn.active .nav-icon{color:var(--cyan)}.sidebar-foot{margin-top:auto;padding:12px 9px;border-top:1px solid #181e27}.live-pill{display:flex;align-items:center;gap:7px;color:#8d9aa7;font-size:10px}.live-dot{width:7px;height:7px;border-radius:999px;background:var(--green);box-shadow:0 0 8px rgba(97,214,163,.5)}.ledger-meta{margin-top:7px;color:#4f5b68;font:9px ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.shell{margin-left:228px;min-height:100vh}.topbar{position:sticky;top:0;z-index:15;height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 28px;border-bottom:1px solid rgba(36,43,54,.9);background:rgba(9,11,15,.92);backdrop-filter:blur(16px)}.crumb{display:flex;align-items:center;gap:8px;color:var(--muted)}.crumb strong{color:var(--text);font-weight:650}.top-actions{display:flex;align-items:center;gap:10px}.updated{color:var(--faint);font-size:10px}.refresh-btn{height:31px;padding:0 11px;border:1px solid var(--line2);border-radius:7px;background:#141a22;color:#dce2e8;cursor:pointer}.content{max-width:1660px;margin:0 auto;padding:24px 28px 48px}.view{display:none}.view.active{display:block}.page-head{display:flex;justify-content:space-between;gap:20px;margin-bottom:20px}.page-head h1{margin:0;font-size:24px;letter-spacing:-.035em}.page-head p{margin:5px 0 0;color:var(--muted);font-size:12px}.coverage-note{padding-top:5px;color:var(--faint);font-size:10px;text-align:right}.scopebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}.seg{display:inline-flex;padding:3px;background:#10151c;border:1px solid var(--line);border-radius:8px}.seg button{height:27px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:#7f8a97;font-size:10px;cursor:pointer}.seg button.active{background:#202835;color:#fff}.scopebar select,.scopebar input[type=search]{height:34px;border:1px solid var(--line);border-radius:7px;background:#0f141b;color:#dce2e8;padding:0 9px;outline:0}.scopebar select{min-width:128px}.scopebar input[type=search]{min-width:210px}.check{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}.check input{accent-color:var(--cyan)}
-.pulse{display:grid;grid-template-columns:minmax(330px,1.35fr) minmax(220px,.8fr) minmax(220px,.8fr);border:1px solid #26303c;border-radius:12px;background:linear-gradient(120deg,#111821 0%,#0e131a 65%);overflow:hidden;box-shadow:var(--shadow)}.pulse-main{padding:22px 24px;border-right:1px solid #212a35}.eyebrow{color:var(--cyan);font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}.pulse-title{margin-top:9px;font-size:19px;font-weight:720;letter-spacing:-.025em}.pulse-sub{margin-top:3px;color:var(--muted);font-size:11px}.pulse-badges{display:flex;gap:5px;flex-wrap:wrap;margin-top:12px}.pulse-stat{display:flex;flex-direction:column;justify-content:center;padding:18px 20px;border-right:1px solid #212a35}.pulse-stat:last-child{border-right:0}.pulse-stat label{color:#73808e;font-size:9px;font-weight:780;letter-spacing:.1em;text-transform:uppercase}.pulse-stat strong{margin-top:7px;font-size:26px;letter-spacing:-.04em;font-variant-numeric:tabular-nums}.pulse-stat span{margin-top:3px;color:var(--faint);font-size:10px}.kpis{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:9px;margin-top:10px}.kpi{padding:13px 14px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.kpi label{display:block;color:#768291;font-size:9px;font-weight:760;letter-spacing:.085em;text-transform:uppercase}.kpi strong{display:block;margin-top:6px;font-size:19px;letter-spacing:-.03em}.kpi small{display:block;margin-top:3px;color:var(--faint);font-size:9px}.kpi.accent strong{color:var(--cyan2)}.section{margin-top:22px}.section-title{display:flex;align-items:end;justify-content:space-between;margin-bottom:9px}.section-title h2{margin:0;font-size:13px}.section-title p{margin:0;color:var(--faint);font-size:10px}.grid-2{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(360px,.8fr);gap:10px}.grid-equal{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.panel{border:1px solid var(--line);border-radius:10px;background:var(--surface);min-width:0}.panel-head{display:flex;justify-content:space-between;padding:14px 15px 0}.panel-head h3{margin:0;font-size:12px}.panel-head p{margin:3px 0 0;color:var(--faint);font-size:9px}.chart{height:248px;padding:4px 10px 10px}.chart svg{width:100%;height:100%;display:block}.gridline{stroke:#202934;stroke-width:1;stroke-dasharray:3 5}.axis{stroke:#33404d}.chart-line{fill:none;stroke:var(--cyan);stroke-width:2}.chart-area{fill:url(#areaFill)}.point{fill:var(--cyan);stroke:#dff5ff;stroke-width:1.1}.point.amber{fill:var(--amber)}.chart-label{fill:#657382;font-size:9px}.empty{height:228px;display:grid;place-items:center;text-align:center;color:#74808e;padding:20px}.empty strong{display:block;color:#c9d0d8;font-size:11px}.empty span{display:block;max-width:360px;margin-top:5px;color:#56616e;font-size:9px}.recent{overflow:hidden}.recent-row{display:grid;grid-template-columns:84px minmax(190px,1.5fr) 110px 94px 86px 100px 92px 82px;gap:10px;align-items:center;padding:10px 13px;border-top:1px solid #1d242e;cursor:pointer}.recent-row:hover{background:#151b24}.recent-row.header{border-top:0;background:#111720;color:#657382;font-size:9px;font-weight:760;text-transform:uppercase;cursor:default}.cell-main{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.cell-sub{margin-top:2px;color:var(--faint);font-size:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.num{text-align:right;font-variant-numeric:tabular-nums}.badge{display:inline-flex;align-items:center;padding:2px 6px;border:1px solid var(--line2);border-radius:5px;color:#9aa5b1;background:#151b23;font-size:9px;font-weight:740}.badge.good{color:var(--green);border-color:rgba(97,214,163,.28);background:rgba(97,214,163,.08)}.badge.warn{color:var(--amber);border-color:rgba(239,194,104,.28);background:rgba(239,194,104,.08)}.badge.bad{color:var(--red);border-color:rgba(240,125,141,.28);background:rgba(240,125,141,.08)}.badge.fast{color:var(--cyan);border-color:rgba(98,200,255,.3);background:var(--cyanSoft)}.table-shell{overflow:auto}.turn-table{width:100%;border-collapse:collapse;min-width:1100px}.turn-table th,.turn-table td{padding:10px 11px;border-bottom:1px solid #1d242e;text-align:left;white-space:nowrap}.turn-table th{position:sticky;top:0;background:#111720;color:#657382;font-size:9px;font-weight:780;text-transform:uppercase}.turn-table tbody tr{cursor:pointer}.turn-table tbody tr:hover{background:#151b24}.pagination{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;color:var(--faint);font-size:10px}.pagination button{border:1px solid var(--line);border-radius:6px;background:#151b23;color:#aeb8c2;padding:5px 9px}.orchestra-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,.75fr);gap:10px}.turn-picker{width:100%;height:34px;border:1px solid var(--line);border-radius:7px;background:#0f141b;color:#dce2e8;padding:0 9px}.orch-main{padding:15px}.orch-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:14px 0}.mini{padding:11px;border:1px solid #202936;border-radius:8px;background:#0e1319}.mini label{display:block;color:#697684;font-size:9px;text-transform:uppercase}.mini strong{display:block;margin-top:5px;font-size:16px}.worker-list{border:1px solid #202936;border-radius:8px;overflow:hidden}.worker-row{display:grid;grid-template-columns:minmax(150px,1.4fr) 120px 110px 90px;gap:10px;padding:10px 11px;border-top:1px solid #202936}.worker-row:first-child{border-top:0}.worker-row.header{background:#111720;color:#657382;font-size:9px;text-transform:uppercase}.worker-empty{padding:28px;text-align:center;color:var(--faint)}.compare-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.cohort{padding:16px}.cohort-top{display:flex;justify-content:space-between}.cohort h3{margin:0}.cohort-n{color:var(--faint);font-size:10px}.cohort-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:13px}.cohort-metrics div{padding:10px;background:#0d1218;border:1px solid #1e2631;border-radius:7px}.cohort-metrics span{display:block;color:var(--faint);font-size:9px}.cohort-metrics strong{display:block;margin-top:4px;font-size:15px}.callout{padding:12px 13px;border:1px solid #24303c;border-radius:8px;background:#0e151c;color:#8995a2;font-size:10px}.quality-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.quality-card{padding:14px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.quality-card label{color:#74808d;font-size:9px;text-transform:uppercase}.quality-card strong{display:block;margin-top:6px;font-size:20px}.quality-list{margin-top:10px;border:1px solid var(--line);border-radius:9px;overflow:hidden}.quality-row{display:flex;justify-content:space-between;padding:10px 12px;border-top:1px solid var(--line);color:var(--muted)}.quality-row:first-child{border-top:0}.quality-row strong{color:#dce2e8}.drawer-scrim{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:49}.drawer-scrim.open{display:block}.drawer{position:fixed;z-index:50;top:0;right:0;bottom:0;width:min(520px,94vw);padding:20px;overflow:auto;background:#0d1117;border-left:1px solid #2a3340;box-shadow:-20px 0 60px rgba(0,0,0,.4);transform:translateX(103%);transition:transform .18s}.drawer.open{transform:translateX(0)}.drawer-head{display:flex;justify-content:space-between}.drawer-head h2{margin:0}.drawer-close{border:1px solid var(--line);background:#151b23;color:#b6c0ca;border-radius:6px;width:30px;height:30px}.drawer-section{margin-top:18px}.drawer-section h3{color:#778391;font-size:9px;text-transform:uppercase}.detail-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid #222b36;border-radius:8px;overflow:hidden}.detail{padding:10px 11px;border-top:1px solid #222b36;border-right:1px solid #222b36}.detail:nth-child(-n+2){border-top:0}.detail:nth-child(even){border-right:0}.detail span{display:block;color:var(--faint);font-size:9px}.detail strong{display:block;margin-top:4px;overflow-wrap:anywhere}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px!important}@media(max-width:1180px){.sidebar{width:190px}.shell{margin-left:190px}.kpis{grid-template-columns:repeat(3,1fr)}.pulse{grid-template-columns:1fr 1fr}.grid-2,.orchestra-layout{grid-template-columns:1fr}}@media(max-width:820px){.sidebar{display:none}.shell{margin-left:0}.content{padding:18px 14px}.kpis,.quality-grid,.compare-grid,.grid-equal{grid-template-columns:1fr 1fr}.pulse{grid-template-columns:1fr}}
-</style></head><body><aside class="sidebar"><div class="brand"><div class="brand-mark"><span class="brand-dot"></span><span>Orchestra</span></div><small>Research console · local only</small></div><nav><div class="nav-label">Workspace</div><button class="nav-btn active" data-view="overview"><span class="nav-icon">◫</span>Overview</button><button class="nav-btn" data-view="turns"><span class="nav-icon">≣</span>Turns</button><button class="nav-btn" data-view="orchestra"><span class="nav-icon">⌘</span>Orchestra</button><button class="nav-btn" data-view="compare"><span class="nav-icon">⇄</span>Compare</button><button class="nav-btn" data-view="quality"><span class="nav-icon">◇</span>Data quality</button></nav><div class="sidebar-foot"><div class="live-pill"><span class="live-dot"></span><span id="liveText">Live ledger</span></div><div id="ledgerMeta" class="ledger-meta"></div></div></aside><div class="shell"><header class="topbar"><div class="crumb"><span>Orchestra</span><span>/</span><strong id="crumbTitle">Overview</strong></div><div class="top-actions"><span id="updated" class="updated">Waiting for snapshot…</span><button id="refresh" class="refresh-btn">Refresh</button></div></header><main class="content"><div class="scopebar"><div class="seg"><button data-period="today">Today</button><button data-period="7d">7D</button><button data-period="30d">30D</button><button class="active" data-period="all">All</button></div><select id="project"></select><select id="model"></select><select id="speed"></select><select id="status"></select><select id="workers"><option value="">Any workers</option><option value="with">With workers</option><option value="without">No workers</option></select><input id="search" type="search" placeholder="Search project or model"><label class="check"><input id="exact" type="checkbox">Exact only</label><label class="check"><input id="auto" type="checkbox" checked>Live refresh</label></div><section id="overviewView" class="view active"></section><section id="turnsView" class="view"></section><section id="orchestraView" class="view"></section><section id="compareView" class="view"></section><section id="qualityView" class="view"></section></main></div><div id="scrim" class="drawer-scrim"></div><aside id="drawer" class="drawer"></aside>
+:root{
+  color-scheme:dark;
+  --bg:#0a0b0d;
+  --sidebar:#0d0f12;
+  --panel:#12151a;
+  --panel2:#171b21;
+  --line:#242a32;
+  --line2:#303844;
+  --text:#f4f6f8;
+  --muted:#9ba4af;
+  --faint:#65707d;
+  --accent:#8aa8ff;
+  --accent2:#b3c5ff;
+  --good:#67d99a;
+  --warn:#f0c36d;
+  --bad:#f07f8f;
+  --radius:12px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select{font:inherit}
+.sidebar{position:fixed;inset:0 auto 0 0;width:210px;background:var(--sidebar);border-right:1px solid #1b2027;padding:20px 14px;z-index:20}
+.brand{padding:2px 10px 22px;font-size:17px;font-weight:760;letter-spacing:-.03em}
+.brand b{color:var(--accent)}
+.nav{display:grid;gap:4px}
+.nav button{height:39px;padding:0 11px;border:0;border-radius:8px;background:transparent;color:#929ba6;text-align:left;cursor:pointer;font-weight:620}
+.nav button:hover{background:#151920;color:#d9dee4}
+.nav button.active{background:#1a2029;color:#fff}
+.side-bottom{position:absolute;left:14px;right:14px;bottom:18px;padding:12px 10px;border-top:1px solid #1b2027;color:var(--faint);font-size:11px}
+.live{display:flex;align-items:center;gap:7px;color:#aab2bb}
+.live-dot{width:7px;height:7px;border-radius:99px;background:var(--good)}
+.shell{margin-left:210px;min-height:100vh}
+.top{position:sticky;top:0;z-index:15;height:64px;display:flex;align-items:center;justify-content:space-between;padding:0 30px;border-bottom:1px solid #1b2027;background:rgba(10,11,13,.94);backdrop-filter:blur(14px)}
+.page-title{font-size:16px;font-weight:680}
+.top-right{display:flex;align-items:center;gap:12px}
+.updated{color:var(--faint);font-size:11px}
+.refresh{height:34px;padding:0 12px;border:1px solid var(--line2);border-radius:8px;background:#171b21;color:#e4e8ed;cursor:pointer}
+.content{max-width:1560px;margin:0 auto;padding:26px 30px 52px}
+.view{display:none}.view.active{display:block}
+.filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+.periods{display:flex;padding:3px;border:1px solid var(--line);border-radius:9px;background:#101318}
+.periods button{height:30px;padding:0 11px;border:0;border-radius:6px;background:transparent;color:#818b97;cursor:pointer;font-size:12px}
+.periods button.active{background:#242b35;color:#fff}
+.filters select,.filters input[type=search]{height:36px;border:1px solid var(--line);border-radius:8px;background:#11151a;color:#e5e9ed;padding:0 10px}
+.filters select{min-width:132px}.filters input[type=search]{min-width:210px}
+.filters label{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.filters input[type=checkbox]{accent-color:var(--accent)}
+.hero{display:grid;grid-template-columns:minmax(360px,1.4fr) repeat(3,minmax(150px,.7fr));overflow:hidden;border:1px solid var(--line2);border-radius:14px;background:var(--panel)}
+.hero-main{padding:24px 26px;border-right:1px solid var(--line)}
+.hero-label{color:var(--faint);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em}
+.hero-title{margin-top:8px;font-size:25px;font-weight:760;letter-spacing:-.04em}
+.hero-meta{margin-top:5px;color:var(--muted);font-size:13px}
+.badges{display:flex;gap:6px;margin-top:14px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;height:24px;padding:0 8px;border:1px solid var(--line2);border-radius:999px;background:#171c23;color:#a8b1bb;font-size:10px;font-weight:700}
+.badge.good{color:var(--good);border-color:rgba(103,217,154,.28);background:rgba(103,217,154,.08)}
+.badge.warn{color:var(--warn);border-color:rgba(240,195,109,.28);background:rgba(240,195,109,.08)}
+.badge.bad{color:var(--bad);border-color:rgba(240,127,143,.28);background:rgba(240,127,143,.08)}
+.badge.fast{color:var(--accent2);border-color:rgba(138,168,255,.34);background:rgba(138,168,255,.09)}
+.hero-stat{display:flex;flex-direction:column;justify-content:center;padding:20px;border-right:1px solid var(--line)}
+.hero-stat:last-child{border-right:0}
+.hero-stat span{color:var(--faint);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em}
+.hero-stat strong{margin-top:8px;font-size:27px;letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.hero-stat small{margin-top:3px;color:var(--faint);font-size:10px}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:10px;margin-top:10px}
+.kpi{padding:15px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.kpi span{display:block;color:var(--faint);font-size:10px;font-weight:720;text-transform:uppercase;letter-spacing:.08em}
+.kpi strong{display:block;margin-top:6px;font-size:22px;letter-spacing:-.035em}
+.section{margin-top:24px}
+.section-head{display:flex;align-items:end;justify-content:space-between;margin-bottom:10px}
+.section-head h2{margin:0;font-size:15px;letter-spacing:-.02em}
+.section-head span{color:var(--faint);font-size:11px}
+.chart-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(360px,.85fr);gap:10px}
+.panel{min-width:0;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.panel-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0}
+.panel-head h3{margin:0;font-size:14px}.panel-head span{color:var(--faint);font-size:11px}
+.chart{height:300px;padding:8px 14px 14px}
+.chart svg{width:100%;height:100%;display:block}
+.gridline{stroke:#222831;stroke-width:1}.axis{stroke:#38414d;stroke-width:1}
+.line{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linejoin:round;stroke-linecap:round}
+.bar{fill:var(--accent)}.bar:hover{fill:var(--accent2)}
+.point{fill:var(--accent);stroke:#e7edff;stroke-width:1.2}
+.label{fill:#87919c;font-size:12px}
+.empty{height:280px;display:grid;place-items:center;text-align:center;color:var(--faint);font-size:13px}
+.recent{overflow:hidden}
+.recent-head,.recent-row{display:grid;grid-template-columns:92px minmax(220px,1.5fr) 130px 110px 110px 110px 100px;gap:12px;align-items:center}
+.recent-head{padding:10px 14px;border-bottom:1px solid var(--line);color:var(--faint);font-size:10px;font-weight:720;text-transform:uppercase}
+.recent-row{padding:13px 14px;border-bottom:1px solid #1e242c;cursor:pointer}
+.recent-row:last-child{border-bottom:0}.recent-row:hover{background:var(--panel2)}
+.main{font-weight:630;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{margin-top:2px;color:var(--faint);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.table-wrap{overflow:auto}.turn-table{width:100%;min-width:980px;border-collapse:collapse}
+.turn-table th,.turn-table td{padding:12px 13px;border-bottom:1px solid #1e242c;text-align:left;white-space:nowrap}
+.turn-table th{position:sticky;top:0;background:#141820;color:var(--faint);font-size:10px;text-transform:uppercase}
+.turn-table tbody tr{cursor:pointer}.turn-table tbody tr:hover{background:var(--panel2)}
+.pagination{display:flex;justify-content:space-between;align-items:center;padding:11px 13px;color:var(--faint);font-size:11px}
+.pagination button{height:30px;border:1px solid var(--line);border-radius:7px;background:#171b21;color:#c9d0d8;padding:0 10px}
+.orch-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(300px,.55fr);gap:10px}
+.orch-main{padding:18px}.turn-picker{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;background:#11151a;color:#e5e9ed;padding:0 10px}
+.orch-big{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin:14px 0}
+.orch-big div{padding:14px;border:1px solid var(--line);border-radius:9px;background:#101318}
+.orch-big span{display:block;color:var(--faint);font-size:10px;text-transform:uppercase}
+.orch-big strong{display:block;margin-top:5px;font-size:20px}
+.worker-table{overflow:hidden;border:1px solid var(--line);border-radius:9px}
+.worker-row{display:grid;grid-template-columns:minmax(160px,1.5fr) 120px 110px 90px;gap:10px;padding:11px 12px;border-bottom:1px solid var(--line)}
+.worker-row:last-child{border-bottom:0}.worker-row.head{background:#141820;color:var(--faint);font-size:10px;text-transform:uppercase}
+.compare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cohort{padding:18px}.cohort h3{margin:0;font-size:16px}.cohort .n{margin-top:4px;color:var(--faint);font-size:11px}
+.cohort-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px}
+.cohort-metrics div{padding:12px;border:1px solid var(--line);border-radius:8px;background:#101318}
+.cohort-metrics span{display:block;color:var(--faint);font-size:10px}.cohort-metrics strong{display:block;margin-top:5px;font-size:18px}
+.drawer-bg{display:none;position:fixed;inset:0;z-index:49;background:rgba(0,0,0,.55)}.drawer-bg.open{display:block}
+.drawer{position:fixed;z-index:50;top:0;right:0;bottom:0;width:min(520px,94vw);padding:22px;overflow:auto;background:#0f1216;border-left:1px solid var(--line2);transform:translateX(103%);transition:.18s}.drawer.open{transform:translateX(0)}
+.drawer-top{display:flex;justify-content:space-between;gap:12px}.drawer-top h2{margin:0;font-size:20px}.drawer-close{width:32px;height:32px;border:1px solid var(--line);border-radius:7px;background:#171b21;color:#d8dde3}
+.drawer-section{margin-top:20px}.drawer-section h3{margin:0 0 9px;color:var(--faint);font-size:10px;text-transform:uppercase}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.detail{padding:11px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}.detail:nth-child(even){border-right:0}
+.detail span{display:block;color:var(--faint);font-size:10px}.detail strong{display:block;margin-top:4px;font-size:13px;overflow-wrap:anywhere}
+@media(max-width:1100px){.sidebar{width:176px}.shell{margin-left:176px}.hero{grid-template-columns:1fr 1fr}.hero-main{grid-column:1/-1;border-right:0;border-bottom:1px solid var(--line)}.kpis{grid-template-columns:repeat(2,1fr)}.chart-grid,.orch-layout{grid-template-columns:1fr}.recent-head,.recent-row{grid-template-columns:82px minmax(180px,1.5fr) 110px 90px 90px}.recent-head>:nth-child(6),.recent-row>:nth-child(6),.recent-head>:nth-child(7),.recent-row>:nth-child(7){display:none}}
+</style>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand">Orchestra <b>Telemetry</b></div>
+  <div class="nav">
+    <button class="active" data-view="overview">Overview</button>
+    <button data-view="turns">Turns</button>
+    <button data-view="orchestra">Orchestra</button>
+    <button data-view="compare">Compare</button>
+  </div>
+  <div class="side-bottom">
+    <div class="live"><span class="live-dot"></span><span id="liveState">Live ledger</span></div>
+    <div id="coverageMini" style="margin-top:6px"></div>
+  </div>
+</aside>
+<div class="shell">
+  <header class="top">
+    <div class="page-title" id="pageTitle">Overview</div>
+    <div class="top-right"><span id="updated" class="updated"></span><button id="refresh" class="refresh">Refresh</button></div>
+  </header>
+  <main class="content">
+    <div class="filters">
+      <div class="periods">
+        <button data-period="today">Today</button><button data-period="7d">7D</button><button data-period="30d">30D</button><button class="active" data-period="all">All</button>
+      </div>
+      <select id="project"><option value="">All projects</option></select>
+      <select id="model"><option value="">All models</option></select>
+      <select id="speed"><option value="">All speeds</option></select>
+      <input id="search" type="search" placeholder="Search project">
+      <label><input id="exact" type="checkbox"> Exact only</label>
+      <label><input id="auto" type="checkbox" checked> Auto</label>
+    </div>
+
+    <section id="overviewView" class="view active"></section>
+    <section id="turnsView" class="view"></section>
+    <section id="orchestraView" class="view"></section>
+    <section id="compareView" class="view"></section>
+  </main>
+</div>
+<div id="drawerBg" class="drawer-bg"></div>
+<aside id="drawer" class="drawer"></aside>
 <script>
-let DATA=__PAYLOAD__;const LIVE=__LIVE_MODE__,UNKNOWN='UNKNOWN',PAGE=18;const state={view:'overview',period:'all',project:'',model:'',speed:'',status:'',workers:'',query:'',exact:false,page:1,orchRun:null};const $=id=>document.getElementById(id);const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));const known=v=>v!==null&&v!==undefined&&v!==''&&v!==UNKNOWN;
-function compact(v){if(!known(v))return UNKNOWN;const x=Number(v),a=Math.abs(x);if(a>=1e9)return(x/1e9).toFixed(2).replace(/\.0+$/,'')+'B';if(a>=1e6)return(x/1e6).toFixed(2).replace(/\.0+$/,'')+'M';if(a>=1e3)return(x/1e3).toFixed(1).replace(/\.0$/,'')+'K';return Number.isInteger(x)?x.toLocaleString():x.toFixed(1)}function duration(v){if(!known(v))return UNKNOWN;let s=Math.round(Number(v)),h=Math.floor(s/3600);s%=3600;let m=Math.floor(s/60),sec=s%60;if(h)return`${h}h ${m}m`;if(m)return`${m}m ${sec}s`;return`${sec}s`}function pct(v){return known(v)?Number(v).toFixed(1)+'%':UNKNOWN}function cachePct(r){return known(r.cache_ratio)?pct(100*Number(r.cache_ratio)):UNKNOWN}function localDate(iso){if(!known(iso))return UNKNOWN;const d=new Date(iso);return Number.isNaN(d.getTime())?UNKNOWN:d.toLocaleString(undefined,{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}function localDay(iso){if(!known(iso))return'';const d=new Date(iso);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}function badgeStatus(s){const c=s==='COMPLETED'?'good':s==='OPEN'?'warn':(s==='INTERRUPTED'||s==='FAILED'?'bad':'');return`<span class="badge ${c}">${esc(s||UNKNOWN)}</span>`}function badgeSpeed(r){return`<span class="badge ${r.speed_certified?'fast':''}">${esc(r.speed_mode||UNKNOWN)}</span>`}
-function setOptions(id,values,label){const el=$(id),old=el.value;el.innerHTML=`<option value="">${esc(label)}</option>`+(values||[]).map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join('');if((values||[]).includes(old))el.value=old}function hydrateFilters(){setOptions('project',DATA.filters?.projects||[],'All projects');setOptions('model',DATA.filters?.models||[],'All models');setOptions('speed',DATA.filters?.speed_modes||[],'All speeds');setOptions('status',DATA.filters?.statuses||[],'All statuses')}
-function rows(){const today=localDay(new Date().toISOString()),cut7=Date.now()-7*864e5,cut30=Date.now()-30*864e5,q=state.query.trim().toLowerCase();return(DATA.turns||[]).filter(r=>{const ts=new Date(r.timestamp).getTime();if(state.period==='today'&&localDay(r.timestamp)!==today)return false;if(state.period==='7d'&&Number.isFinite(ts)&&ts<cut7)return false;if(state.period==='30d'&&Number.isFinite(ts)&&ts<cut30)return false;if(state.project&&r.project!==state.project)return false;if(state.model&&r.model!==state.model)return false;if(state.speed&&r.speed_mode!==state.speed)return false;if(state.status&&r.status!==state.status)return false;if(state.workers==='with'&&!(r.worker_count>0))return false;if(state.workers==='without'&&r.worker_count>0)return false;if(state.exact&&r.usage_quality!=='EXACT')return false;if(q&&!`${r.project} ${r.worktree} ${r.model}`.toLowerCase().includes(q))return false;return true}).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp))}const exactRows=rs=>rs.filter(r=>r.usage_quality==='EXACT'&&known(r.exact_total_tokens));const sum=a=>a.reduce((x,v)=>x+(known(v)?Number(v):0),0);function median(a){a=a.filter(known).map(Number).sort((x,y)=>x-y);if(!a.length)return null;const i=Math.floor(a.length/2);return a.length%2?a[i]:(a[i-1]+a[i])/2}
-function empty(id,title,sub){$(id).innerHTML=`<div class="empty"><div><strong>${esc(title)}</strong><span>${esc(sub)}</span></div></div>`}function chartLine(id,rs,field,fmt,exactOnly=false){let a=rs.filter(r=>known(r[field])&&(!exactOnly||r.usage_quality==='EXACT')).slice().reverse().slice(-72);if(!a.length)return empty(id,'Not enough measured data',exactOnly?'Exact observations will appear here as OTel enrichments arrive.':'This selection has no valid values yet.');const vals=a.map(r=>Number(r[field])),max=Math.max(...vals,1),W=780,H=225,L=48,R=14,T=13,B=29,cw=W-L-R,ch=H-T-B,x=i=>L+cw*i/Math.max(a.length-1,1),y=v=>T+ch-v/max*ch;const grids=[0,.25,.5,.75,1].map(p=>{const yy=T+ch*p;return`<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="chart-label" x="${L-7}" y="${yy+3}" text-anchor="end">${esc(fmt(max*(1-p)))}</text>`}).join('');const points=vals.map((v,i)=>`${x(i)},${y(v)}`).join(' '),path=`M ${L} ${T+ch} L `+vals.map((v,i)=>`${x(i)} ${y(v)}`).join(' L ')+` L ${x(vals.length-1)} ${T+ch} Z`;const dots=a.map((r,i)=>`<circle class="point" cx="${x(i)}" cy="${y(vals[i])}" r="3"><title>${esc(localDate(r.timestamp)+' · '+fmt(vals[i])+' · '+r.project)}</title></circle>`).join('');$(id).innerHTML=`<svg viewBox="0 0 ${W} ${H}"><defs><linearGradient id="areaFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#62c8ff" stop-opacity=".22"/><stop offset="1" stop-color="#62c8ff" stop-opacity="0"/></linearGradient></defs>${grids}<path class="chart-area" d="${path}"/><polyline class="chart-line" points="${points}"/>${dots}<text class="chart-label" x="${L}" y="${H-5}">${esc(localDate(a[0].timestamp))}</text><text class="chart-label" x="${W-R}" y="${H-5}" text-anchor="end">${esc(localDate(a[a.length-1].timestamp))}</text></svg>`}function scatter(id,rs,xField,yField){const a=rs.filter(r=>known(r[xField])&&known(r[yField]));if(!a.length)return empty(id,'No comparable exact turns yet','This plot requires both known wall time and exact orchestra token usage.');const mx=Math.max(...a.map(r=>Number(r[xField])),1),my=Math.max(...a.map(r=>Number(r[yField])),1),W=760,H=225,L=49,R=14,T=15,B=28,cw=W-L-R,ch=H-T-B;const dots=a.map(r=>{const x=L+Number(r[xField])/mx*cw,y=T+ch-Number(r[yField])/my*ch;return`<circle class="point amber" cx="${x}" cy="${y}" r="4"><title>${esc(r.project+' · '+duration(r[xField])+' · '+compact(r[yField]))}</title></circle>`}).join('');$(id).innerHTML=`<svg viewBox="0 0 ${W} ${H}"><line class="axis" x1="${L}" y1="${T+ch}" x2="${W-R}" y2="${T+ch}"/><line class="axis" x1="${L}" y1="${T}" x2="${L}" y2="${T+ch}"/>${dots}<text class="chart-label" x="${L}" y="${H-4}">duration → ${esc(duration(mx))}</text><text class="chart-label" x="${L+4}" y="${T+8}">tokens ↑ ${esc(compact(my))}</text></svg>`}
-function recentList(rs,limit=8){const a=rs.slice(0,limit);if(!a.length)return'<div class="empty">No turns match this scope.</div>';return'<div class="recent-row header"><div>Time</div><div>Project</div><div>Model</div><div>Duration</div><div>Workers</div><div>Tokens</div><div>Cache</div><div>Status</div></div>'+a.map(r=>`<div class="recent-row" data-run="${esc(r.run_id)}"><div>${esc(localDate(r.timestamp))}</div><div><div class="cell-main">${esc(r.project)}</div><div class="cell-sub">${esc(r.worktree)}</div></div><div>${esc(r.model)}</div><div class="num">${esc(duration(r.duration_seconds))}</div><div class="num">${esc(known(r.worker_count)?r.worker_count:UNKNOWN)}</div><div class="num">${esc(compact(r.orchestra_exact_total_tokens??r.exact_total_tokens))}</div><div class="num">${esc(cachePct(r))}</div><div>${badgeStatus(r.status)}</div></div>`).join('')}function panel(title,sub,id){return`<article class="panel"><div class="panel-head"><div><h3>${esc(title)}</h3><p>${esc(sub)}</p></div></div><div id="${id}" class="chart"></div></article>`}
-function renderOverview(){const rs=rows(),exact=exactRows(rs),focus=exact[0]||rs[0],total=sum(exact.map(r=>r.exact_total_tokens)),input=sum(exact.map(r=>r.input_tokens)),cached=sum(exact.map(r=>r.cached_input_tokens)),fresh=sum(exact.map(r=>r.non_cached_input_tokens)),wall=sum(rs.map(r=>r.duration_seconds)),coverage=rs.length?100*exact.length/rs.length:null,cache=input?100*cached/input:null;const pulse=focus?`<section class="pulse"><div class="pulse-main"><div class="eyebrow">${exact[0]?'Latest measured turn':'Latest turn'}</div><div class="pulse-title">${esc(focus.project)}</div><div class="pulse-sub">${esc(focus.worktree)} · ${esc(focus.model)}</div><div class="pulse-badges">${badgeSpeed(focus)} ${badgeStatus(focus.status)}</div></div><div class="pulse-stat"><label>Orchestra tokens</label><strong>${esc(compact(focus.orchestra_exact_total_tokens??focus.exact_total_tokens))}</strong><span>${esc(focus.usage_quality)} usage</span></div><div class="pulse-stat"><label>Wall time</label><strong>${esc(duration(focus.duration_seconds))}</strong><span>${esc(known(focus.worker_count)?focus.worker_count+' workers':'worker count unknown')}</span></div></section>`:'';$("overviewView").innerHTML=`<div class="page-head"><div><h1>Overview</h1><p>How much Codex work costs, how long it takes, and how much evidence is exact.</p></div><div class="coverage-note">${exact.length} exact turns · ${rs.length} in scope</div></div>${pulse}<div class="kpis"><div class="kpi accent"><label>Exact tokens</label><strong>${esc(compact(total))}</strong><small>canonical measured usage</small></div><div class="kpi"><label>Known wall time</label><strong>${esc(duration(wall))}</strong><small>${rs.filter(r=>known(r.duration_seconds)).length} measured turns</small></div><div class="kpi"><label>Exact coverage</label><strong>${esc(pct(coverage))}</strong><small>${exact.length} / ${rs.length} turns</small></div><div class="kpi"><label>Context cache</label><strong>${esc(pct(cache))}</strong><small>${esc(compact(cached))} cached · ${esc(compact(fresh))} fresh</small></div><div class="kpi"><label>Completed</label><strong>${rs.filter(r=>r.status==='COMPLETED').length}</strong><small>${rs.filter(r=>r.status==='INTERRUPTED').length} interrupted · ${rs.filter(r=>r.status==='OPEN').length} open</small></div></div><div class="section"><div class="section-title"><div><h2>Consumption</h2><p>Exact OTel usage is separated from historical unknowns.</p></div></div><div class="grid-2">${panel('Token usage','Exact total tokens per turn','tokenChart')}${panel('Duration','Wall time per turn','durationChart')}</div></div><div class="section"><div class="section-title"><div><h2>Recent work</h2><p>Click any turn to inspect its evidence.</p></div></div><div class="panel recent">${recentList(rs)}</div></div><div class="section"><div class="grid-equal">${panel('Duration × tokens','Efficiency frontier will emerge as exact coverage grows','scatterChart')}${panel('Cache reuse','Cached input share on exact turns','cacheChart')}</div></div>`;chartLine('tokenChart',rs,'exact_total_tokens',compact,true);chartLine('durationChart',rs,'duration_seconds',duration,false);scatter('scatterChart',rs,'duration_seconds','orchestra_exact_total_tokens');chartLine('cacheChart',rs,'cache_ratio',v=>pct(100*Number(v)),true)}
-function renderTurns(){const rs=rows(),pages=Math.max(1,Math.ceil(rs.length/PAGE));state.page=Math.min(state.page,pages);const start=(state.page-1)*PAGE,a=rs.slice(start,start+PAGE);$("turnsView").innerHTML=`<div class="page-head"><div><h1>Turns</h1><p>Dense evidence list. IDs and attribution details stay in the drawer.</p></div><div class="coverage-note">${rs.length} matching turns</div></div><div class="panel"><div class="table-shell"><table class="turn-table"><thead><tr><th>Time</th><th>Project</th><th>Model</th><th>Speed</th><th>Workers</th><th>Duration</th><th>Root</th><th>Workers</th><th>Orchestra</th><th>Cache</th><th>Status</th></tr></thead><tbody>${a.map(r=>`<tr data-run="${esc(r.run_id)}"><td>${esc(localDate(r.timestamp))}</td><td><div class="cell-main">${esc(r.project)}</div><div class="cell-sub">${esc(r.worktree)}</div></td><td>${esc(r.model)}</td><td>${badgeSpeed(r)}</td><td>${esc(known(r.worker_count)?r.worker_count:UNKNOWN)}</td><td>${esc(duration(r.duration_seconds))}</td><td>${esc(compact(r.root_exact_total_tokens))}</td><td>${esc(compact(r.worker_exact_total_tokens))}</td><td>${esc(compact(r.orchestra_exact_total_tokens))}</td><td>${esc(cachePct(r))}</td><td>${badgeStatus(r.status)}</td></tr>`).join('')}</tbody></table></div><div class="pagination"><span>${rs.length?start+1:0}–${Math.min(start+PAGE,rs.length)} of ${rs.length}</span><div><button data-page="prev" ${state.page<=1?'disabled':''}>Previous</button> <button data-page="next" ${state.page>=pages?'disabled':''}>Next</button></div></div></div>`}
-function renderOrchestra(){const all=rows(),candidates=all.filter(r=>(r.worker_count||0)>0),selected=(state.orchRun&&all.find(r=>r.run_id===state.orchRun))||candidates[0]||all[0],options=(candidates.length?candidates:all).slice(0,80).map(r=>`<option value="${esc(r.run_id)}" ${selected&&r.run_id===selected.run_id?'selected':''}>${esc(localDate(r.timestamp)+' · '+r.project+' · '+(known(r.worker_count)?r.worker_count:'?')+' workers')}</option>`).join('');let body='<div class="worker-empty">No turn selected.</div>';if(selected){const ws=selected.workers||[];body=`<div class="orch-summary"><div class="mini"><label>Root tokens</label><strong>${esc(compact(selected.root_exact_total_tokens))}</strong></div><div class="mini"><label>Worker tokens</label><strong>${esc(compact(selected.worker_exact_total_tokens))}</strong></div><div class="mini"><label>Orchestra total</label><strong>${esc(compact(selected.orchestra_exact_total_tokens))}</strong></div><div class="mini"><label>Wall time</label><strong>${esc(duration(selected.duration_seconds))}</strong></div></div><div class="worker-list"><div class="worker-row header"><div>Worker</div><div>Model</div><div>Tokens</div><div>Status</div></div>${ws.length?ws.map((w,i)=>`<div class="worker-row"><div><div class="cell-main">Worker ${i+1}</div><div class="cell-sub">${esc(w.worker_id||UNKNOWN)}</div></div><div>${esc(w.model||UNKNOWN)}</div><div>${esc(compact(w.total_tokens))}</div><div>${esc(w.status||UNKNOWN)}</div></div>`).join(''):'<div class="worker-empty">No worker-level observation is available for this turn.</div>'}</div>`}$("orchestraView").innerHTML=`<div class="page-head"><div><h1>Orchestra</h1><p>Inspect root/worker cost without inferring missing lineage.</p></div><div class="coverage-note">${candidates.length} turns with declared workers</div></div><div class="orchestra-layout"><div class="panel orch-main"><select id="orchPicker" class="turn-picker">${options}</select>${body}</div><div class="panel orch-main"><div class="section-title"><div><h2>Optimization lens</h2><p>Use complete exact cohorts for conclusions.</p></div></div><div class="callout">The useful question is not “did workers run?” but “how much wall time did they save per additional token?” This console withholds that claim until comparable cohorts exist.</div></div></div><div class="section"><div class="grid-equal">${panel('Worker count × duration','Descriptive only; not causal speedup','workerDuration')}${panel('Worker count × orchestra tokens','Exact orchestra totals only','workerTokens')}</div></div>`;scatter('workerDuration',all.filter(r=>known(r.worker_count)&&known(r.duration_seconds)),'worker_count','duration_seconds');scatter('workerTokens',all.filter(r=>known(r.worker_count)&&known(r.orchestra_exact_total_tokens)),'worker_count','orchestra_exact_total_tokens');const p=$('orchPicker');if(p)p.onchange=e=>{state.orchRun=e.target.value;renderOrchestra()}}
-function cohort(mode){const rs=rows().filter(r=>r.speed_certified&&r.speed_mode===mode),ex=exactRows(rs),inp=sum(ex.map(r=>r.input_tokens)),c=sum(ex.map(r=>r.cached_input_tokens));return{n:rs.length,d:median(rs.map(r=>r.duration_seconds)),t:median(ex.map(r=>r.exact_total_tokens)),cache:inp?100*c/inp:null}}function cohortCard(name,c){return`<article class="panel cohort"><div class="cohort-top"><h3>${name}</h3><span class="cohort-n">N=${c.n}</span></div>${c.n?`<div class="cohort-metrics"><div><span>Median duration</span><strong>${duration(c.d)}</strong></div><div><span>Median tokens</span><strong>${compact(c.t)}</strong></div><div><span>Cache reuse</span><strong>${pct(c.cache)}</strong></div></div>`:'<div class="empty" style="height:120px"><div><strong>No certified turns</strong><span>Use the explicit benchmark launcher to populate this cohort.</span></div></div>'}</article>`}function renderCompare(){const f=cohort('FAST'),s=cohort('STANDARD');$("compareView").innerHTML=`<div class="page-head"><div><h1>Compare</h1><p>Certified cohorts only. No guessed speed labels.</p></div></div><div class="compare-grid">${cohortCard('FAST',f)}${cohortCard('STANDARD',s)}</div><div class="section"><div class="callout">No recommendation is produced until sample size and task mix are comparable.</div></div>`}
-function renderQuality(){const rs=rows(),ex=exactRows(rs),src=DATA.source||{},exc=DATA.exclusions||{},coverage=rs.length?100*ex.length/rs.length:null;$("qualityView").innerHTML=`<div class="page-head"><div><h1>Data quality</h1><p>What the dashboard can prove, and what it deliberately leaves unknown.</p></div></div><div class="quality-grid"><div class="quality-card"><label>Exact coverage</label><strong>${pct(coverage)}</strong></div><div class="quality-card"><label>Unknown usage</label><strong>${rs.filter(r=>r.usage_quality!=='EXACT').length}</strong></div><div class="quality-card"><label>Open turns</label><strong>${rs.filter(r=>r.status==='OPEN').length}</strong></div><div class="quality-card"><label>Certified speed</label><strong>${rs.filter(r=>r.speed_certified).length}</strong></div></div><div class="section"><div class="quality-list"><div class="quality-row"><span>Session-level runs excluded</span><strong>${exc.session_level_runs_excluded??UNKNOWN}</strong></div><div class="quality-row"><span>Synthetic runs excluded</span><strong>${exc.synthetic_runs_excluded??UNKNOWN}</strong></div><div class="quality-row"><span>Source records</span><strong>${src.record_count??UNKNOWN}</strong></div><div class="quality-row"><span>Ledger SHA-256</span><strong class="mono">${esc(src.ledger_sha256??UNKNOWN)}</strong></div></div></div>`}
-function drawer(runId){const r=(DATA.turns||[]).find(x=>x.run_id===runId);if(!r)return;$("drawer").innerHTML=`<div class="drawer-head"><div><div class="eyebrow">Turn evidence</div><h2>${esc(r.project)}</h2><div class="pulse-sub">${esc(r.model)} · ${esc(localDate(r.timestamp))}</div></div><button class="drawer-close" data-close>×</button></div><div class="drawer-section"><h3>Execution</h3><div class="detail-grid"><div class="detail"><span>Status</span><strong>${esc(r.status)}</strong></div><div class="detail"><span>Duration</span><strong>${duration(r.duration_seconds)}</strong></div><div class="detail"><span>Speed</span><strong>${esc(r.speed_mode)}</strong></div><div class="detail"><span>Workers</span><strong>${known(r.worker_count)?r.worker_count:UNKNOWN}</strong></div></div></div><div class="drawer-section"><h3>Token usage</h3><div class="detail-grid"><div class="detail"><span>Input</span><strong>${compact(r.input_tokens)}</strong></div><div class="detail"><span>Cached</span><strong>${compact(r.cached_input_tokens)}</strong></div><div class="detail"><span>Fresh / non-cached</span><strong>${compact(r.non_cached_input_tokens)}</strong></div><div class="detail"><span>Output</span><strong>${compact(r.output_tokens)}</strong></div><div class="detail"><span>Reasoning</span><strong>${compact(r.reasoning_tokens)}</strong></div><div class="detail"><span>Root total</span><strong>${compact(r.root_exact_total_tokens)}</strong></div><div class="detail"><span>Worker total</span><strong>${compact(r.worker_exact_total_tokens)}</strong></div><div class="detail"><span>Orchestra total</span><strong>${compact(r.orchestra_exact_total_tokens)}</strong></div></div></div><div class="drawer-section"><h3>Attribution</h3><div class="detail-grid"><div class="detail"><span>Usage quality</span><strong>${esc(r.usage_quality)}</strong></div><div class="detail"><span>Usage source</span><strong>${esc(r.usage_source)}</strong></div><div class="detail"><span>Turn ID</span><strong class="mono">${esc(r.turn_id)}</strong></div><div class="detail"><span>Thread / session</span><strong class="mono">${esc(r.thread_id||r.session_id)}</strong></div><div class="detail"><span>Worktree</span><strong>${esc(r.worktree)}</strong></div><div class="detail"><span>Speed source</span><strong>${esc(r.speed_mode_source)}</strong></div></div></div>`;$("drawer").classList.add('open');$("scrim").classList.add('open')}function closeDrawer(){$("drawer").classList.remove('open');$("scrim").classList.remove('open')}
-function render(){document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(`${state.view}View`).classList.add('active');document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));$("crumbTitle").textContent=state.view==='compare'?'Compare':state.view.charAt(0).toUpperCase()+state.view.slice(1);if(state.view==='overview')renderOverview();if(state.view==='turns')renderTurns();if(state.view==='orchestra')renderOrchestra();if(state.view==='compare')renderCompare();if(state.view==='quality')renderQuality();$("ledgerMeta").textContent=(DATA.source?.ledger_sha256||'').slice(0,12)+'… · '+(DATA.source?.record_count??'?')+' records'}
-let timer=null,busy=false,lastUpdate=Date.now();function updated(msg=''){const t=new Date(lastUpdate).toLocaleTimeString();$("updated").textContent=`${LIVE?'Live':'Static'} · updated ${t}${msg?' · '+msg:''}`}async function refresh(){if(!LIVE||busy)return;busy=true;updated('refreshing');try{const res=await fetch('/api/snapshot?ts='+Date.now(),{cache:'no-store'});if(!res.ok)throw new Error();DATA=await res.json();hydrateFilters();lastUpdate=Date.now();render();updated()}catch(e){updated('refresh failed')}finally{busy=false}}function auto(){if(timer)clearInterval(timer);timer=null;if(LIVE&&$("auto").checked)timer=setInterval(refresh,5000)}document.addEventListener('click',e=>{const nav=e.target.closest('[data-view]');if(nav){state.view=nav.dataset.view;render();return}const p=e.target.closest('[data-period]');if(p){state.period=p.dataset.period;document.querySelectorAll('[data-period]').forEach(b=>b.classList.toggle('active',b.dataset.period===state.period));state.page=1;render();return}const row=e.target.closest('[data-run]');if(row){drawer(row.dataset.run);return}if(e.target.closest('[data-close]')||e.target.id==='scrim'){closeDrawer();return}const pg=e.target.closest('[data-page]');if(pg){state.page+=pg.dataset.page==='next'?1:-1;renderTurns()}});[['project','project'],['model','model'],['speed','speed'],['status','status'],['workers','workers']].forEach(([id,key])=>$(id).addEventListener('change',e=>{state[key]=e.target.value;state.page=1;render()}));$("search").addEventListener('input',e=>{state.query=e.target.value;state.page=1;render()});$("exact").addEventListener('change',e=>{state.exact=e.target.checked;state.page=1;render()});$("auto").addEventListener('change',auto);$("refresh").addEventListener('click',refresh);document.addEventListener('keydown',e=>{if(e.key==='Escape')closeDrawer()});hydrateFilters();if(!LIVE){$("auto").checked=false;$("auto").disabled=true;$("liveText").textContent='Static report';$("refresh").disabled=true}render();updated();auto();if(LIVE)refresh();
-</script></body></html>'''
-    return template.replace("__PAYLOAD__", payload).replace("__LIVE_MODE__", "true" if live else "false")
+let DATA=__PAYLOAD__;
+const LIVE=__LIVE__;
+const U='UNKNOWN';
+const $=id=>document.getElementById(id);
+const state={view:'overview',period:'all',project:'',model:'',speed:'',query:'',exact:false,page:1,drawer:null};
+const esc=v=>String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const known=v=>v!==null&&v!==undefined&&v!==''&&v!==U;
+const compact=v=>{if(!known(v))return U;const n=Number(v);if(Math.abs(n)>=1e9)return(n/1e9).toFixed(n>=1e10?1:2)+'B';if(Math.abs(n)>=1e6)return(n/1e6).toFixed(n>=1e7?1:2)+'M';if(Math.abs(n)>=1e3)return(n/1e3).toFixed(n>=1e4?1:2)+'K';return Math.round(n).toLocaleString()};
+const duration=v=>{if(!known(v))return U;let s=Math.round(Number(v));const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);s%=60;if(h)return h+'h '+m+'m';if(m)return m+'m '+s+'s';return s+'s'};
+const pct=v=>known(v)?(Number(v)*100).toFixed(1)+'%':U;
+const ts=v=>known(v)?new Date(v).getTime():0;
+const time=v=>known(v)?new Date(v).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):U;
+const day=v=>known(v)?new Date(v).toLocaleDateString([], {month:'short',day:'numeric'}):U;
+function statusBadge(s){const c=s==='COMPLETED'?'good':(s==='OPEN'?'warn':(s==='INTERRUPTED'||s==='FAILED'?'bad':''));return '<span class="badge '+c+'">'+esc(s||U)+'</span>'}
+function speedBadge(r){if(r.speed_certified)return '<span class="badge fast">'+esc(r.speed_mode)+'</span>';return '<span class="badge">'+esc(r.speed_mode||U)+'</span>'}
+function setOptions(id,values,label){const el=$(id),old=el.value;el.innerHTML='<option value="">'+label+'</option>'+values.map(v=>'<option>'+esc(v)+'</option>').join('');if(values.includes(old))el.value=old}
+function initOptions(){setOptions('project',DATA.filters?.projects||[],'All projects');setOptions('model',DATA.filters?.models||[],'All models');setOptions('speed',DATA.filters?.speed_modes||[],'All speeds')}
+function filtered(){
+  const now=Date.now(),q=state.query.toLowerCase();
+  return (DATA.turns||[]).filter(r=>{
+    const t=ts(r.timestamp);
+    if(state.period==='today'&&day(r.timestamp)!==day(new Date().toISOString()))return false;
+    if(state.period==='7d'&&t<now-7*864e5)return false;
+    if(state.period==='30d'&&t<now-30*864e5)return false;
+    if(state.project&&r.project!==state.project)return false;
+    if(state.model&&r.model!==state.model)return false;
+    if(state.speed&&r.speed_mode!==state.speed)return false;
+    if(state.exact&&r.usage_quality!=='EXACT')return false;
+    if(q&&!String(r.project+' '+r.worktree+' '+r.model).toLowerCase().includes(q))return false;
+    return true;
+  }).sort((a,b)=>ts(b.timestamp)-ts(a.timestamp));
+}
+function latestMeasured(rows){return rows.find(r=>r.usage_quality==='EXACT')||rows[0]||null}
+function sum(rows,key){return rows.reduce((a,r)=>a+(known(r[key])?Number(r[key]):0),0)}
+function renderOverview(){
+  const rows=filtered(),r=latestMeasured(rows),todayRows=rows.filter(x=>day(x.timestamp)===day(new Date().toISOString()));
+  const exact=todayRows.filter(x=>x.usage_quality==='EXACT'),wall=sum(todayRows,'duration_seconds'),workers=todayRows.filter(x=>Number(x.worker_count)>0).length;
+  const hero=r?`<div class="hero">
+    <div class="hero-main"><div class="hero-label">${r.usage_quality==='EXACT'?'Latest measured turn':'Latest turn'}</div><div class="hero-title">${esc(r.project||U)}</div><div class="hero-meta">${esc(r.worktree||r.model||U)} · ${esc(r.model||U)}</div><div class="badges">${speedBadge(r)} ${statusBadge(r.status)}</div></div>
+    <div class="hero-stat"><span>Duration</span><strong>${duration(r.duration_seconds)}</strong><small>${day(r.timestamp)} ${time(r.timestamp)}</small></div>
+    <div class="hero-stat"><span>Total tokens</span><strong>${compact(r.orchestra_exact_total_tokens??r.root_exact_total_tokens??r.exact_total_tokens)}</strong><small>${esc(r.usage_quality||U)}</small></div>
+    <div class="hero-stat"><span>Cache</span><strong>${pct(r.cache_ratio)}</strong><small>${known(r.worker_count)?r.worker_count+' workers':'workers '+U}</small></div>
+  </div>`:`<div class="hero"><div class="hero-main"><div class="hero-title">No turns match this view</div></div></div>`;
+  const exactTokens=sum(exact,'exact_total_tokens');
+  $('overviewView').innerHTML=hero+
+    `<div class="kpis">
+      <div class="kpi"><span>Turns today</span><strong>${todayRows.length}</strong></div>
+      <div class="kpi"><span>Exact tokens today</span><strong>${compact(exactTokens)}</strong></div>
+      <div class="kpi"><span>Wall time today</span><strong>${duration(wall)}</strong></div>
+      <div class="kpi"><span>Exact coverage</span><strong>${rows.length?((rows.filter(x=>x.usage_quality==='EXACT').length/rows.length)*100).toFixed(0)+'%':U}</strong></div>
+      <div class="kpi"><span>Turns with workers</span><strong>${workers}</strong></div>
+    </div>
+    <div class="section"><div class="section-head"><h2>Usage</h2><span>${rows.length} turns</span></div>
+      <div class="chart-grid">
+        <div class="panel"><div class="panel-head"><h3>Exact tokens per measured turn</h3><span id="tokenN"></span></div><div id="tokenChart" class="chart"></div></div>
+        <div class="panel"><div class="panel-head"><h3>Duration</h3><span id="durationN"></span></div><div id="durationChart" class="chart"></div></div>
+      </div>
+    </div>
+    <div class="section"><div class="section-head"><h2>Recent turns</h2><span>Click for details</span></div><div class="panel recent" id="recent"></div></div>`;
+  barChart('tokenChart',rows.filter(x=>known(x.exact_total_tokens)).slice(0,18).reverse(),'exact_total_tokens',compact);$('tokenN').textContent='N='+rows.filter(x=>known(x.exact_total_tokens)).length;
+  lineChart('durationChart',rows.filter(x=>known(x.duration_seconds)).slice(0,30).reverse(),'duration_seconds',duration);$('durationN').textContent='N='+rows.filter(x=>known(x.duration_seconds)).length;
+  renderRecent(rows.slice(0,9));
+}
+function renderRecent(rows){
+  const head='<div class="recent-head"><div>Time</div><div>Work</div><div>Model</div><div>Duration</div><div>Tokens</div><div>Workers</div><div>Status</div></div>';
+  const body=rows.map(r=>`<div class="recent-row" data-run="${esc(r.run_id)}"><div>${time(r.timestamp)}</div><div><div class="main">${esc(r.project)}</div><div class="sub">${esc(r.worktree)}</div></div><div>${esc(r.model)}</div><div class="num">${duration(r.duration_seconds)}</div><div class="num">${compact(r.orchestra_exact_total_tokens??r.root_exact_total_tokens??r.exact_total_tokens)}</div><div class="num">${known(r.worker_count)?r.worker_count:U}</div><div>${statusBadge(r.status)}</div></div>`).join('');
+  $('recent').innerHTML=head+(body||'<div class="empty">No turns</div>');
+}
+function lineChart(id,rows,key,fmt){
+  if(!rows.length){$(id).innerHTML='<div class="empty">No data yet</div>';return}
+  const W=760,H=260,L=68,R=18,T=18,B=42,CW=W-L-R,CH=H-T-B,vals=rows.map(r=>Number(r[key])),max=Math.max(...vals,1);
+  const x=i=>L+CW*i/Math.max(rows.length-1,1),y=v=>T+CH-(v/max)*CH;
+  const grid=[0,.5,1].map(f=>{const yy=T+CH*(1-f);return `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="label" x="${L-10}" y="${yy+4}" text-anchor="end">${esc(fmt(max*f))}</text>`}).join('');
+  const pts=vals.map((v,i)=>x(i)+','+y(v)).join(' ');
+  const dots=vals.map((v,i)=>`<circle class="point" cx="${x(i)}" cy="${y(v)}" r="4"><title>${esc(day(rows[i].timestamp)+' '+time(rows[i].timestamp)+' · '+fmt(v))}</title></circle>`).join('');
+  $(id).innerHTML=`<svg viewBox="0 0 ${W} ${H}">${grid}<line class="axis" x1="${L}" y1="${T+CH}" x2="${W-R}" y2="${T+CH}"/><polyline class="line" points="${pts}"/>${dots}<text class="label" x="${L}" y="${H-12}">${esc(day(rows[0].timestamp))}</text><text class="label" x="${W-R}" y="${H-12}" text-anchor="end">${esc(day(rows.at(-1).timestamp))}</text></svg>`;
+}
+function barChart(id,rows,key,fmt){
+  if(!rows.length){$(id).innerHTML='<div class="empty">Exact token data will appear here.</div>';return}
+  const W=900,H=260,L=70,R=18,T=16,B=42,CW=W-L-R,CH=H-T-B,vals=rows.map(r=>Number(r[key])),max=Math.max(...vals,1),gap=7,bw=Math.max(8,(CW-gap*(rows.length-1))/rows.length);
+  const grid=[0,.5,1].map(f=>{const yy=T+CH*(1-f);return `<line class="gridline" x1="${L}" y1="${yy}" x2="${W-R}" y2="${yy}"/><text class="label" x="${L-10}" y="${yy+4}" text-anchor="end">${esc(fmt(max*f))}</text>`}).join('');
+  const bars=vals.map((v,i)=>{const h=(v/max)*CH,x=L+i*(bw+gap),y=T+CH-h;return `<rect class="bar" x="${x}" y="${y}" width="${bw}" height="${h}" rx="3"><title>${esc(day(rows[i].timestamp)+' '+time(rows[i].timestamp)+' · '+fmt(v))}</title></rect>`}).join('');
+  $(id).innerHTML=`<svg viewBox="0 0 ${W} ${H}">${grid}<line class="axis" x1="${L}" y1="${T+CH}" x2="${W-R}" y2="${T+CH}"/>${bars}<text class="label" x="${L}" y="${H-12}">${esc(day(rows[0].timestamp))}</text><text class="label" x="${W-R}" y="${H-12}" text-anchor="end">${esc(day(rows.at(-1).timestamp))}</text></svg>`;
+}
+function renderTurns(){
+  const all=filtered(),pageSize=18,pages=Math.max(1,Math.ceil(all.length/pageSize));state.page=Math.min(state.page,pages);const start=(state.page-1)*pageSize,rows=all.slice(start,start+pageSize);
+  const body=rows.map(r=>`<tr data-run="${esc(r.run_id)}"><td>${day(r.timestamp)} ${time(r.timestamp)}</td><td><div class="main">${esc(r.project)}</div><div class="sub">${esc(r.worktree)}</div></td><td>${esc(r.model)}</td><td>${duration(r.duration_seconds)}</td><td class="num">${compact(r.orchestra_exact_total_tokens??r.root_exact_total_tokens??r.exact_total_tokens)}</td><td class="num">${known(r.worker_count)?r.worker_count:U}</td><td>${statusBadge(r.status)}</td></tr>`).join('');
+  $('turnsView').innerHTML=`<div class="section-head"><h2>Turns</h2><span>${all.length} total</span></div><div class="panel table-wrap"><table class="turn-table"><thead><tr><th>Time</th><th>Work</th><th>Model</th><th>Duration</th><th class="num">Tokens</th><th class="num">Workers</th><th>Status</th></tr></thead><tbody>${body||'<tr><td colspan="7">No turns</td></tr>'}</tbody></table><div class="pagination"><span>${all.length?start+1:0}–${Math.min(start+pageSize,all.length)} of ${all.length}</span><div><button data-page="prev" ${state.page<=1?'disabled':''}>Prev</button> <button data-page="next" ${state.page>=pages?'disabled':''}>Next</button></div></div></div>`;
+}
+function renderOrchestra(){
+  const rows=filtered().filter(r=>Number(r.worker_count)>0||r.worker_usage_quality==='EXACT'),r=rows[0]||filtered()[0]||null;
+  if(!r){$('orchestraView').innerHTML='<div class="empty">No turns</div>';return}
+  const workers=Array.isArray(r.workers)?r.workers:[];
+  const rowsHtml=workers.map(w=>`<div class="worker-row"><div>${esc(w.worker_id||U)}</div><div>${esc(w.model||U)}</div><div class="num">${compact(w.total_tokens)}</div><div>${esc(w.usage_quality||U)}</div></div>`).join('');
+  $('orchestraView').innerHTML=`<div class="section-head"><h2>Orchestra</h2><span>${rows.length} turns with worker evidence</span></div><div class="orch-layout">
+    <div class="panel orch-main"><select id="orchPick" class="turn-picker">${filtered().slice(0,60).map(x=>`<option value="${esc(x.run_id)}" ${x.run_id===r.run_id?'selected':''}>${esc(day(x.timestamp)+' '+time(x.timestamp)+' · '+x.project)}</option>`).join('')}</select>
+      <div class="orch-big"><div><span>Duration</span><strong>${duration(r.duration_seconds)}</strong></div><div><span>Root</span><strong>${compact(r.root_exact_total_tokens)}</strong></div><div><span>Workers</span><strong>${compact(r.worker_exact_total_tokens)}</strong></div><div><span>Total</span><strong>${compact(r.orchestra_exact_total_tokens)}</strong></div></div>
+      <div class="worker-table"><div class="worker-row head"><div>Worker</div><div>Model</div><div class="num">Tokens</div><div>Quality</div></div>${rowsHtml||'<div class="worker-row"><div>No worker detail recorded</div><div></div><div></div><div></div></div>'}</div>
+    </div>
+    <div class="panel" style="padding:18px"><div class="hero-label">Selected turn</div><div class="hero-title" style="font-size:20px">${esc(r.project)}</div><div class="hero-meta">${esc(r.model)} · ${duration(r.duration_seconds)}</div><div class="badges">${speedBadge(r)} ${statusBadge(r.status)}</div><div style="margin-top:22px;color:var(--faint);font-size:12px">Worker share</div><div style="font-size:28px;font-weight:760;margin-top:4px">${known(r.worker_exact_total_tokens)&&known(r.orchestra_exact_total_tokens)&&Number(r.orchestra_exact_total_tokens)>0?((100*Number(r.worker_exact_total_tokens)/Number(r.orchestra_exact_total_tokens)).toFixed(0)+'%'):U}</div></div>
+  </div>`;
+  $('orchPick').onchange=e=>{const found=filtered().find(x=>x.run_id===e.target.value);if(found){state.drawer=found.run_id;openDrawer(found)}};
+}
+function renderCompare(){
+  const rows=filtered().filter(r=>r.speed_certified);
+  function cohort(mode){const a=rows.filter(r=>r.speed_mode===mode),dur=a.map(r=>r.duration_seconds).filter(known).map(Number).sort((x,y)=>x-y),tok=a.map(r=>r.exact_total_tokens).filter(known).map(Number).sort((x,y)=>x-y);const med=x=>x.length?x[Math.floor((x.length-1)/2)]:null;return `<div class="panel cohort"><h3>${mode}</h3><div class="n">N=${a.length} certified turns</div><div class="cohort-metrics"><div><span>Median duration</span><strong>${duration(med(dur))}</strong></div><div><span>Median tokens</span><strong>${compact(med(tok))}</strong></div><div><span>Exact N</span><strong>${tok.length}</strong></div></div></div>`}
+  $('compareView').innerHTML=`<div class="section-head"><h2>FAST vs STANDARD</h2><span>launcher-certified only</span></div><div class="compare">${cohort('FAST')}${cohort('STANDARD')}</div>`;
+}
+function openDrawer(r){
+  state.drawer=r.run_id;$('drawerBg').classList.add('open');$('drawer').classList.add('open');
+  $('drawer').innerHTML=`<div class="drawer-top"><div><h2>${esc(r.project)}</h2><div class="hero-meta">${esc(day(r.timestamp)+' '+time(r.timestamp)+' · '+r.model)}</div></div><button class="drawer-close" data-close>×</button></div>
+  <div class="drawer-section"><h3>Summary</h3><div class="detail-grid">
+    <div class="detail"><span>Duration</span><strong>${duration(r.duration_seconds)}</strong></div><div class="detail"><span>Status</span><strong>${esc(r.status)}</strong></div>
+    <div class="detail"><span>Total tokens</span><strong>${compact(r.orchestra_exact_total_tokens??r.root_exact_total_tokens??r.exact_total_tokens)}</strong></div><div class="detail"><span>Cache</span><strong>${pct(r.cache_ratio)}</strong></div>
+    <div class="detail"><span>Workers</span><strong>${known(r.worker_count)?r.worker_count:U}</strong></div><div class="detail"><span>Speed</span><strong>${esc(r.speed_mode||U)}</strong></div>
+  </div></div>
+  <div class="drawer-section"><h3>Token breakdown</h3><div class="detail-grid">
+    <div class="detail"><span>Input</span><strong>${compact(r.input_tokens)}</strong></div><div class="detail"><span>Cached</span><strong>${compact(r.cached_input_tokens)}</strong></div>
+    <div class="detail"><span>Fresh input</span><strong>${compact(r.non_cached_input_tokens)}</strong></div><div class="detail"><span>Output</span><strong>${compact(r.output_tokens)}</strong></div>
+    <div class="detail"><span>Reasoning</span><strong>${compact(r.reasoning_tokens)}</strong></div><div class="detail"><span>Usage quality</span><strong>${esc(r.usage_quality||U)}</strong></div>
+  </div></div>
+  <div class="drawer-section"><h3>IDs</h3><div class="detail-grid"><div class="detail"><span>Turn</span><strong>${esc(r.turn_id||U)}</strong></div><div class="detail"><span>Thread</span><strong>${esc(r.thread_id||r.session_id||U)}</strong></div></div></div>`;
+}
+function closeDrawer(){state.drawer=null;$('drawerBg').classList.remove('open');$('drawer').classList.remove('open')}
+function render(){
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));$(state.view+'View').classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.view===state.view));$('pageTitle').textContent=state.view[0].toUpperCase()+state.view.slice(1);
+  const rows=filtered(),exact=rows.filter(r=>r.usage_quality==='EXACT').length;$('coverageMini').textContent=rows.length?(exact+'/'+rows.length+' exact turns'):'No turns';
+  if(state.view==='overview')renderOverview();else if(state.view==='turns')renderTurns();else if(state.view==='orchestra')renderOrchestra();else renderCompare();
+}
+let timer=null,busy=false;
+async function refresh(){
+  if(!LIVE||busy)return;busy=true;$('updated').textContent='Refreshing…';
+  try{const r=await fetch('/api/snapshot?ts='+Date.now(),{cache:'no-store'});if(!r.ok)throw new Error('HTTP '+r.status);DATA=await r.json();initOptions();render();$('updated').textContent='Updated '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+  catch(e){$('updated').textContent='Refresh failed'}finally{busy=false}
+}
+function auto(){if(timer)clearInterval(timer);timer=null;if(LIVE&&$('auto').checked)timer=setInterval(refresh,5000)}
+document.addEventListener('click',e=>{
+  const nav=e.target.closest('[data-view]');if(nav){state.view=nav.dataset.view;render();return}
+  const p=e.target.closest('[data-period]');if(p){state.period=p.dataset.period;document.querySelectorAll('[data-period]').forEach(x=>x.classList.toggle('active',x.dataset.period===state.period));state.page=1;render();return}
+  const row=e.target.closest('[data-run]');if(row){const r=filtered().find(x=>x.run_id===row.dataset.run);if(r)openDrawer(r);return}
+  const pg=e.target.closest('[data-page]');if(pg){state.page+=pg.dataset.page==='next'?1:-1;renderTurns();return}
+  if(e.target.closest('[data-close]')||e.target.id==='drawerBg')closeDrawer();
+});
+$('project').onchange=e=>{state.project=e.target.value;state.page=1;render()};$('model').onchange=e=>{state.model=e.target.value;state.page=1;render()};$('speed').onchange=e=>{state.speed=e.target.value;state.page=1;render()};
+$('search').oninput=e=>{state.query=e.target.value;state.page=1;render()};$('exact').onchange=e=>{state.exact=e.target.checked;state.page=1;render()};$('refresh').onclick=refresh;$('auto').onchange=auto;
+initOptions();render();auto();if(LIVE)refresh();else{$('auto').checked=false;$('auto').disabled=true;$('refresh').disabled=true;$('liveState').textContent='Static report'}
+</script>
+</body>
+</html>'''
+    return template.replace("__PAYLOAD__", payload).replace("__LIVE__", "true" if live else "false")
 
 
-class Handler(http.server.BaseHTTPRequestHandler):
+class _Handler(http.server.BaseHTTPRequestHandler):
     store_root: str | None = None
     cache_path: str | None = None
 
@@ -73,10 +365,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, status: int, body: bytes, content_type: str) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
@@ -97,7 +387,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             try:
                 body = build_html(self._snapshot(), live=True).encode("utf-8")
             except core.DashboardError as exc:
-                self._send(503, f"orchestra-dashboard: {html.escape(str(exc))}\n".encode(), "text/plain; charset=utf-8")
+                self._send(503, html.escape(str(exc)).encode("utf-8"), "text/plain; charset=utf-8")
                 return
             self._send(200, body, "text/html; charset=utf-8")
             return
@@ -107,7 +397,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return
 
 
-def parser() -> argparse.ArgumentParser:
+def _parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--store", default=None)
     p.add_argument("--cache", default=None)
@@ -115,40 +405,40 @@ def parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command")
     serve = sub.add_parser("serve")
     serve.add_argument("--host", default="127.0.0.1")
-    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument("--port", type=int, default=8766)
     serve.add_argument("--no-browser", action="store_true")
     report = sub.add_parser("report")
-    report.add_argument("--output", default="orchestra-dashboard-product.html")
+    report.add_argument("--output", default="orchestra-dashboard-highlight.html")
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parser().parse_args(argv)
+    args = _parser().parse_args(argv)
     if args.command is None:
         args.command = "serve"
         args.host = "127.0.0.1"
-        args.port = 8765
+        args.port = 8766
         args.no_browser = False
     try:
-        if args.command == "serve" and args.host != "127.0.0.1":
-            raise core.DashboardError("product dashboard binds to 127.0.0.1 only")
         store = core.TelemetryStore(args.store)
         cache = None if args.no_cache else core._cache_path(store, args.cache)
-        snap = core.load_snapshot(store, cache=cache)
+        snapshot = core.load_snapshot(store, cache=cache)
         if args.command == "report":
             target = Path(args.output).expanduser()
             if target.resolve() == store.ledger_path.resolve():
                 raise core.DashboardError("report must not overwrite ledger.jsonl")
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(build_html(snap, live=False), encoding="utf-8", newline="\n")
+            target.write_text(build_html(snapshot, live=False), encoding="utf-8", newline="\n")
             print(str(target.resolve()))
             return 0
-        handler = type("ProductDashboardHandler", (Handler,), {})
+        if args.host != "127.0.0.1":
+            raise core.DashboardError("dashboard binds to 127.0.0.1 only")
+        handler = type("HighlightDashboardHandler", (_Handler,), {})
         handler.store_root = str(store.root)
-        handler.cache_path = str(cache) if cache else None
+        handler.cache_path = str(cache) if cache is not None else None
         with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), handler) as server:
             url = f"http://127.0.0.1:{server.server_port}/"
-            print(f"Orchestra product dashboard: {url}", flush=True)
+            print(f"Orchestra dashboard: {url}", flush=True)
             if not args.no_browser:
                 webbrowser.open(url)
             try:
@@ -157,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
                 pass
         return 0
     except (core.DashboardError, OSError) as exc:
-        print(f"orchestra-dashboard-product: {exc}", file=sys.stderr)
+        print(f"orchestra-dashboard: {exc}", file=sys.stderr)
         return 2
 
 
