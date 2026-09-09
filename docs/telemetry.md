@@ -251,6 +251,33 @@ latest ledger state without taking the telemetry writer lock; an incomplete
 final JSONL line is ignored until a later refresh completes it, so an UNKNOWN
 turn can later become EXACT when its native OTel enrichment arrives.
 
+## Optional GitHub review snapshot
+
+When an external, prompt-blind review copy is useful, run the publisher from the
+dedicated `codex/orchestra-telemetry-snapshots` branch:
+
+```powershell
+& .\scripts\capture_orchestra_usage.ps1
+```
+
+The command reads the local ledger, validates it, writes only these derived files,
+and commits and pushes only those two paths to `origin/codex/orchestra-telemetry-snapshots`:
+
+```text
+snapshots/orchestra-usage-latest.json
+snapshots/orchestra-usage-latest.md
+```
+
+It refuses to run with unrelated staged changes, pre-existing snapshot changes,
+or a different branch. The files contain no raw ledger records, prompts,
+responses, tool arguments or outputs, transcripts, secrets, or full local paths.
+If the repository is private, the reader still needs GitHub access. The stable
+machine-readable path is:
+
+```text
+snapshots/orchestra-usage-latest.json
+```
+
 ## Installation boundary
 
 The canonical installer copies the collector, read-only dashboard, benchmark
