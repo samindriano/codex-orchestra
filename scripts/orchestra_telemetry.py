@@ -913,6 +913,13 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
     start = next(item for item in records if item.get("record_type") == "turn_start")
     root_records = [item for item in records if item.get("record_type") == "usage_observed" and item.get("attribution_role") == "ROOT"]
     root_usage, root_source, root_quality = _aggregate_usage(root_records)
+    expected_worker_ids = {
+        item.get("worker_id")
+        for item in records
+        if item.get("record_type") == "worker_edge_observed"
+        and item.get("measurement_quality") == "EXACT_MACHINE_READABLE"
+        and isinstance(item.get("worker_id"), str)
+    }
     workers: dict[str, dict[str, Any]] = {}
     worker_records: dict[str, list[dict[str, Any]]] = {}
     unmatched_worker_usage = 0
@@ -934,28 +941,45 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 unmatched_worker_usage += 1
         elif item.get("record_type") == "usage_observed" and item.get("attribution_role") not in {"ROOT", "WORKER"}:
             ambiguous_usage += 1
-    for worker_id, worker in workers.items():
+    # The edge set is the only exact expected population.  Lifecycle rows may
+    # enrich an expected worker or expose an orphan, but cannot assert that a
+    # worker was launched by this root turn.
+    worker_ids = expected_worker_ids | set(workers) | set(worker_records)
+    for worker_id in sorted(worker_ids):
+        worker = workers.setdefault(worker_id, {
+            "worker_id": worker_id,
+            "agent_type": None,
+            "model": None,
+            "launch_status": None,
+            "native_thread_id": None,
+            "native_turn_id": None,
+        })
         usage, source, quality = _aggregate_usage(worker_records.get(worker_id, []))
         worker["usage"] = usage
         worker["usage_source"] = source
         worker["usage_quality"] = quality
-    unmatched_worker_ids = set(worker_records) - set(workers)
+    unmatched_worker_ids = (set(workers) - expected_worker_ids) | (set(worker_records) - expected_worker_ids)
     declared_count = start.get("orchestra", {}).get("actual_worker_count")
-    if workers and (declared_count is None or declared_count == len(workers)):
+    if expected_worker_ids and (declared_count is None or declared_count == len(expected_worker_ids)) and not (set(workers) - expected_worker_ids):
         presence_quality = "EXACT"
-    elif declared_count == 0 and start.get("orchestra", {}).get("worker_presence_quality") == "EXACT":
+    elif not expected_worker_ids and not workers and declared_count == 0 and start.get("orchestra", {}).get("worker_presence_quality") == "EXACT":
         presence_quality = "EXACT"
     else:
         presence_quality = "UNKNOWN"
-    worker_exact = bool(workers) and presence_quality == "EXACT" and not unmatched_worker_ids and not unmatched_worker_usage and all(worker["usage_quality"] == "EXACT" for worker in workers.values())
-    if not workers and declared_count == 0 and presence_quality == "EXACT":
+    worker_exact = bool(expected_worker_ids) and presence_quality == "EXACT" and not unmatched_worker_ids and not unmatched_worker_usage and all(workers[worker_id]["usage_quality"] == "EXACT" for worker_id in expected_worker_ids)
+    if not expected_worker_ids and not workers and declared_count == 0 and presence_quality == "EXACT":
         worker_exact = True
-    worker_total = sum(worker["usage"]["total_tokens"] for worker in workers.values()) if worker_exact else (0 if not workers and declared_count == 0 else None)
+    worker_total = sum(workers[worker_id]["usage"]["total_tokens"] for worker_id in expected_worker_ids) if worker_exact else (0 if not expected_worker_ids and not workers and declared_count == 0 else None)
     orchestra_total = root_usage["total_tokens"] + worker_total if root_quality == "EXACT" and worker_exact and root_usage["total_tokens"] is not None and worker_total is not None else None
     orchestra = dict(start.get("orchestra", {}))
+    actual_worker_count = len(expected_worker_ids) if expected_worker_ids else (
+        0
+        if not workers and declared_count == 0 and start.get("orchestra", {}).get("worker_presence_quality") == "EXACT"
+        else None
+    )
     orchestra.update({
         "workers": list(workers.values()),
-        "actual_worker_count": len(workers) if workers else declared_count,
+        "actual_worker_count": actual_worker_count,
         "worker_presence_quality": presence_quality,
         "worker_total_tokens": worker_total,
         "worker_total_quality": "EXACT" if worker_exact else "UNKNOWN",
