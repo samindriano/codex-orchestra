@@ -513,7 +513,22 @@ def _worker_parent_run(store: TelemetryStore, worker_id: str) -> str | None:
         records = store.run_records(run_id)
     except TelemetryError:
         return None
-    if not any(item.get("record_type") == "turn_start" and item.get("session_id") == parent_session_id and item.get("turn_id") == parent_turn_id for item in records):
+    root_turn = any(
+        item.get("record_type") == "turn_start"
+        and item.get("session_id") == parent_session_id
+        and item.get("turn_id") == parent_turn_id
+        for item in records
+    )
+    parent_workers = {
+        item.get("worker_id")
+        for item in records
+        if item.get("record_type") == "worker_observed"
+        and item.get("measurement_quality") == "EXACT_MACHINE_READABLE"
+        and item.get("session_id") == parent_session_id
+        and item.get("turn_id") == parent_turn_id
+        and isinstance(item.get("worker_id"), str)
+    }
+    if not root_turn and len(parent_workers) != 1:
         return None
     return run_id
 
@@ -921,12 +936,14 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
         and isinstance(item.get("worker_id"), str)
     }
     workers: dict[str, dict[str, Any]] = {}
+    observed_worker_ids: set[str] = set()
     worker_records: dict[str, list[dict[str, Any]]] = {}
     unmatched_worker_usage = 0
     ambiguous_usage = 0
     for item in records:
         if item.get("record_type") == "worker_observed" and isinstance(item.get("worker_id"), str):
-            workers[item["worker_id"]] = {
+            worker_id = item["worker_id"]
+            workers[worker_id] = {
                 "worker_id": item["worker_id"],
                 "agent_type": item.get("agent_type"),
                 "model": item.get("model"),
@@ -934,6 +951,13 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "native_thread_id": item.get("native_thread_id"),
                 "native_turn_id": item.get("native_turn_id"),
             }
+            if (
+                item.get("measurement_quality") == "EXACT_MACHINE_READABLE"
+                and item.get("launch_status") in WORKER_STATUSES
+                and isinstance(item.get("native_thread_id"), str)
+                and isinstance(item.get("native_turn_id"), str)
+            ):
+                observed_worker_ids.add(worker_id)
         elif item.get("record_type") == "usage_observed" and item.get("attribution_role") == "WORKER":
             if isinstance(item.get("worker_id"), str):
                 worker_records.setdefault(item["worker_id"], []).append(item)
@@ -941,9 +965,9 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
                 unmatched_worker_usage += 1
         elif item.get("record_type") == "usage_observed" and item.get("attribution_role") not in {"ROOT", "WORKER"}:
             ambiguous_usage += 1
-    # The edge set is the only exact expected population.  Lifecycle rows may
-    # enrich an expected worker or expose an orphan, but cannot assert that a
-    # worker was launched by this root turn.
+    # The edge set is the only exact expected population.  Valid lifecycle rows
+    # may enrich an expected worker or expose an orphan, but cannot assert that
+    # a worker was launched by this root turn.
     worker_ids = expected_worker_ids | set(workers) | set(worker_records)
     for worker_id in sorted(worker_ids):
         worker = workers.setdefault(worker_id, {
@@ -966,7 +990,7 @@ def _fold_run(records: list[dict[str, Any]]) -> dict[str, Any]:
         presence_quality = "EXACT"
     else:
         presence_quality = "UNKNOWN"
-    worker_exact = bool(expected_worker_ids) and presence_quality == "EXACT" and not unmatched_worker_ids and not unmatched_worker_usage and all(workers[worker_id]["usage_quality"] == "EXACT" for worker_id in expected_worker_ids)
+    worker_exact = bool(expected_worker_ids) and presence_quality == "EXACT" and expected_worker_ids.issubset(observed_worker_ids) and not unmatched_worker_ids and not unmatched_worker_usage and all(workers[worker_id]["usage_quality"] == "EXACT" for worker_id in expected_worker_ids)
     if not expected_worker_ids and not workers and declared_count == 0 and presence_quality == "EXACT":
         worker_exact = True
     worker_total = sum(workers[worker_id]["usage"]["total_tokens"] for worker_id in expected_worker_ids) if worker_exact else (0 if not expected_worker_ids and not workers and declared_count == 0 else None)

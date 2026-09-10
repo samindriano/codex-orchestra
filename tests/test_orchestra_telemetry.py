@@ -6,6 +6,7 @@ import unittest
 from scripts.orchestra_telemetry import (
     TelemetryStore,
     _fold_run,
+    _otel_attach,
     _structured_child_ids,
     create_turn,
     handle_hook_event,
@@ -94,11 +95,26 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertIsNone(orchestra["worker_total_tokens"])
         self.assertIsNone(orchestra["orchestra_total_tokens"])
 
-    def test_two_edges_require_each_expected_worker_lifecycle_and_otel(self) -> None:
+    def test_two_edges_only_one_lifecycle_is_unknown(self) -> None:
         run_id = self.start_root()
         self.add_edge("root-session", "root-turn", "worker-a", "worker-b")
         handle_hook_event(self.store, self.hook("SubagentStart", "root-session", turn="worker-turn-a", agent_id="worker-a", agent_type="explorer", model="worker-model"))
         handle_hook_event(self.store, self.hook("SubagentStop", "root-session", turn="worker-turn-a", agent_id="worker-a", agent_type="explorer", model="worker-model"))
+        ingest_otel_payload(self.store, self.otel("root-session", "root-turn", 100))
+        ingest_otel_payload(self.store, self.otel("worker-a", "worker-turn-a", 25))
+        orchestra = self.fold(run_id)["orchestra"]
+        self.assertEqual(orchestra["actual_worker_count"], 2)
+        self.assertEqual(orchestra["worker_presence_quality"], "EXACT")
+        self.assertEqual(orchestra["worker_total_quality"], "UNKNOWN")
+        self.assertIsNone(orchestra["worker_total_tokens"])
+        self.assertIsNone(orchestra["orchestra_total_tokens"])
+
+    def test_two_edges_only_one_worker_otel_is_unknown(self) -> None:
+        run_id = self.start_root()
+        self.add_worker("root-session", "worker-turn-a", "worker-a")
+        self.add_worker("root-session", "worker-turn-b", "worker-b")
+        self.stop_worker("root-session", "worker-turn-a", "worker-a")
+        self.stop_worker("root-session", "worker-turn-b", "worker-b")
         ingest_otel_payload(self.store, self.otel("root-session", "root-turn", 100))
         ingest_otel_payload(self.store, self.otel("worker-a", "worker-turn-a", 25))
         orchestra = self.fold(run_id)["orchestra"]
@@ -118,6 +134,35 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertIsNone(orchestra["worker_total_tokens"])
         self.assertIsNone(orchestra["orchestra_total_tokens"])
         self.assertTrue((self.store.root / "otel-pending.jsonl").exists())
+
+    def test_edge_with_usage_without_lifecycle_is_not_exact(self) -> None:
+        run_id = self.start_root()
+        self.add_edge("root-session", "root-turn", "worker-a")
+        _otel_attach(
+            self.store,
+            {
+                "source_digest": "synthetic-worker-usage",
+                "thread_id": "worker-a",
+                "turn_id": "worker-turn-a",
+                "usage": {
+                    "input_tokens": 5,
+                    "cached_input_tokens": 0,
+                    "cache_write_input_tokens": 0,
+                    "non_cached_input_tokens": 5,
+                    "output_tokens": 20,
+                    "reasoning_output_tokens": 0,
+                    "total_tokens": 25,
+                },
+                "malformed": False,
+            },
+            (run_id, "worker-a"),
+        )
+        orchestra = self.fold(run_id)["orchestra"]
+        self.assertEqual(orchestra["actual_worker_count"], 1)
+        self.assertEqual(orchestra["worker_presence_quality"], "EXACT")
+        self.assertEqual(orchestra["worker_total_quality"], "UNKNOWN")
+        self.assertIsNone(orchestra["worker_total_tokens"])
+        self.assertIsNone(orchestra["orchestra_total_tokens"])
 
     def test_lifecycle_without_exact_edge_cannot_claim_worker_population(self) -> None:
         run_id = self.start_root()
@@ -159,7 +204,7 @@ class OrchestraTelemetryTests(unittest.TestCase):
     def test_nested_child_edge_is_in_expected_population(self) -> None:
         run_id = self.start_root()
         self.add_worker("root-session", "worker-turn-a", "worker-a")
-        handle_hook_event(self.store, self.hook("PostToolUse", "root-session", turn="root-turn", tool_name="spawn_agent", tool_response={"result": {"structured_content": {"receiver_thread_ids": ["worker-b"]}}}))
+        handle_hook_event(self.store, self.hook("PostToolUse", "root-session", turn="worker-turn-a", tool_name="spawn_agent", tool_response={"result": {"structured_content": {"receiver_thread_ids": ["worker-b"]}}}))
         handle_hook_event(self.store, self.hook("SubagentStart", "root-session", turn="worker-turn-b", agent_id="worker-b", agent_type="explorer", model="worker-model"))
         handle_hook_event(self.store, self.hook("SubagentStop", "root-session", turn="worker-turn-b", agent_id="worker-b", agent_type="explorer", model="worker-model"))
         ingest_otel_payload(self.store, self.otel("root-session", "root-turn", 100))
@@ -170,6 +215,8 @@ class OrchestraTelemetryTests(unittest.TestCase):
         self.assertEqual({worker["worker_id"] for worker in orchestra["workers"]}, {"worker-a", "worker-b"})
         self.assertEqual(orchestra["worker_total_tokens"], 60)
         self.assertEqual(orchestra["orchestra_total_tokens"], 160)
+        nested_edges = [item for item in self.store.run_records(run_id) if item.get("record_type") == "worker_edge_observed" and item.get("worker_id") == "worker-b"]
+        self.assertEqual([(item["parent_session_id"], item["parent_turn_id"]) for item in nested_edges], [("root-session", "worker-turn-a")])
 
     def test_root_and_one_worker_are_exact(self) -> None:
         run_id = self.start_root()

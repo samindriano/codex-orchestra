@@ -30,7 +30,8 @@ Root usage is aggregated only from `attribution_role=ROOT`; worker usage is
 aggregated only from `attribution_role=WORKER` with a known worker ID. The
 expected worker population is the deduplicated `worker_id` set from exact
 `worker_edge_observed` records. A worker total is exact only when every
-expected worker also has lifecycle observation and exact native OTel usage;
+expected worker also has a valid machine-readable lifecycle/native-identity
+observation and exact native OTel usage;
 an orphan lifecycle or usage row cannot add a worker to the population, and an
 edge without its lifecycle or usage keeps the worker total UNKNOWN. An omitted
 worker count is never treated as proof of zero workers. The normal hook path
