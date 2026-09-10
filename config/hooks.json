@@ -1,0 +1,12 @@
+{
+  "description": "Codex Orchestra passive telemetry hooks",
+  "hooks": {
+    "SessionStart": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "UserPromptSubmit": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "PostToolUse": [{"matcher": "spawn_agent|Agent", "hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "SubagentStart": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "SubagentStop": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "Stop": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}],
+    "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 \"__CODEX_HOME_POSIX__/scripts/orchestra_telemetry.py\" hook", "command_windows": "py -3 \"__CODEX_HOME_WINDOWS__\\scripts\\orchestra_telemetry.py\" hook", "timeout": 3}]}]
+  }
+}
