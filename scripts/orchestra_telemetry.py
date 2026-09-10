@@ -49,6 +49,15 @@ USAGE_FIELDS = (
     "reasoning_output_tokens",
     "total_tokens",
 )
+OTEL_TOKEN_FIELDS = (
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_write_input_tokens",
+    "non_cached_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens",
+)
 USAGE_QUALITIES = {"EXACT", "UNKNOWN"}
 USAGE_SOURCES = {"NATIVE_OTEL_TRACE", "NONE"}
 TURN_STATUSES = {"STARTED", "COMPLETED", "INTERRUPTED", "UNKNOWN"}
@@ -562,9 +571,9 @@ def _otel_span_items(payload: Any) -> list[dict[str, Any]]:
                 turn_id = attrs.get("turn.id")
                 if not isinstance(thread_id, str) or not _LABEL_RE.fullmatch(thread_id) or not isinstance(turn_id, str) or not _LABEL_RE.fullmatch(turn_id):
                     continue
-                usage: dict[str, int | None] = {field: None for field in USAGE_FIELDS}
+                usage: dict[str, int | None] = {field: None for field in OTEL_TOKEN_FIELDS}
                 malformed = False
-                for field in USAGE_FIELDS:
+                for field in OTEL_TOKEN_FIELDS:
                     value = attrs.get(f"codex.turn.token_usage.{field}")
                     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                         malformed = True
