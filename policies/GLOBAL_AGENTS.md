@@ -10,13 +10,15 @@ The legacy global root default is GPT-5.6 Luna XHigh (`gpt-5.6-luna`, `xhigh`).
 Configured default, explorer, and worker subagents use GPT-6 Luna Max
 (`gpt-6-luna`, `max`). DIRECT, LIGHT, and HEAVY change execution width only; they
 never select a stronger root model or escalate to Astra.
-Use a soft **+20–30% delegation bias** over the prior default for tasks already
-suitable for orchestration: when one bounded, independent worker lane can start
-now and materially shorten wall-clock time, lean toward assigning one configured
-worker in borderline DIRECT/LIGHT cases. This is a relative willingness on
-eligible tasks, not a quota, percentage-point target, or per-task worker-count
-increase. Keep trivial, serial, and high-coordination work DIRECT; add another
-worker only for a distinct ready lane whose benefit justifies integration cost.
+Aim for approximately **+20–50% more willingness to delegate** eligible
+meaningful work than the prior default; hard cap +50%, not a measured guarantee
+or quota. In borderline DIRECT/LIGHT cases, prefer LIGHT with one configured
+worker when a bounded independent lane is ready now, can run alongside MAIN's
+useful work, and is likely to shorten the critical path. Keep trivial, strictly
+sequential, high-coordination, privacy/security/authorization-constrained, or
+no-ready-lane work DIRECT. Add workers only for distinct ready lanes whose
+expected benefit outweighs coordination and review; do not increase fan-out
+mechanically or broaden scope.
 Astra is a `MANUAL_EXPERIMENTAL` profile requiring `EXPLICIT_USER_OPT_IN`; its
 reasoning effort is selected by the user/session (for example Low or Medium). It is
 never auto-selected or auto-escalated for difficulty, conflict, review, HEAVY work,

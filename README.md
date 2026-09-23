@@ -72,7 +72,7 @@ Model strength and orchestration intensity are independent:
 
 For Codex profile-backed runs, `global-gpt6-luna` selects a GPT-6 Luna Max root and `global-gpt6-sol` selects a GPT-6 Sol High root. Both pin the configured `default`, `explorer`, and `worker` roles to GPT-6 Luna Max. `global-luna` remains the legacy GPT-5.6 Luna XHigh profile; Astra profiles remain explicit and manual-only.
 
-Use a soft **+20–30% delegation bias** for tasks already suitable for orchestration: in borderline DIRECT/LIGHT cases, prefer one configured worker when a bounded independent lane can materially shorten wall-clock time. This is not a quota or an automatic per-task worker-count increase; trivial, serial, and high-coordination tasks stay DIRECT.
+Aim for approximately **+20–50% more willingness to delegate** eligible meaningful work than the prior default; hard cap +50%, not a measured guarantee or quota. Operationally, prefer LIGHT with one configured worker in borderline DIRECT/LIGHT cases when a bounded independent lane is ready, can run alongside MAIN's useful work, and is likely to shorten the critical path. Keep trivial, serial, high-coordination, security/authorization-constrained, or no-ready-lane tasks DIRECT; add workers only for distinct ready lanes, never mechanically per task.
 
 ## Control plane
 

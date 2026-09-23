@@ -17,12 +17,14 @@ user intent. Do a brief parallelism preflight for meaningful tasks: identify wha
 can run now, which scopes are independent, what MAIN retains, and which ready worker
 assignments should launch early. Do not manufacture lanes or fan out by default.
 
-Apply a soft **+20–30% delegation bias** on tasks already suitable for
-orchestration: when one bounded, independent lane can start now and materially
-shorten wall-clock time, lean toward assigning one configured worker in borderline
-DIRECT/LIGHT cases. This is not a quota or a per-task worker-count increase. Keep
-trivial, serial, and high-coordination work DIRECT; add workers only for distinct
-ready lanes whose benefit justifies coordination and integration cost.
+Aim for approximately **+20–50% more willingness to delegate** eligible meaningful
+work than the prior default; hard cap +50%, not a measured guarantee or quota. In
+borderline DIRECT/LIGHT cases, prefer LIGHT with one configured worker when a
+bounded independent lane is ready now, can run alongside MAIN's useful work, and
+is likely to shorten the critical path. Keep trivial, strictly sequential,
+high-coordination, privacy/security/authorization-constrained, or no-ready-lane
+work DIRECT. Add workers only for distinct ready lanes; do not increase fan-out
+mechanically or broaden scope.
 
 - **DIRECT:** one useful immediate frontier, including difficult sequential work.
 - **LIGHT:** roughly 1–2 useful independent worker lanes.

@@ -26,7 +26,7 @@ class GlobalPolicyTests(unittest.TestCase):
 
     def _write_source(self) -> None:
         text = {
-            "policies/GLOBAL_AGENTS.md": "# Global policy\nCODEX_ORCHESTRA_GLOBAL_POLICY_V1\n+20–30% delegation bias\n",
+            "policies/GLOBAL_AGENTS.md": "# Global policy\nCODEX_ORCHESTRA_GLOBAL_POLICY_V1\n+20–50% delegation bias; hard cap +50%\n",
             "scripts/orchestra_telemetry.py": "#!/usr/bin/env python3\nSYNTHETIC_TELEMETRY_FIXTURE\n",
             "scripts/orchestra_dashboard.py": "#!/usr/bin/env python3\nSYNTHETIC_DASHBOARD_FIXTURE\n",
             "scripts/codex_benchmark_launcher.py": "#!/usr/bin/env python3\nSYNTHETIC_BENCHMARK_LAUNCHER\n",
@@ -54,8 +54,8 @@ class GlobalPolicyTests(unittest.TestCase):
                 },
             }),
             "skills/astra-decision-orchestrator/SKILL.md": "# Astra\n",
-            "skills/luna-orchestra/SKILL.md": "# Luna\n+20–30% delegation bias\n",
-            "skills/sol-orchestra/SKILL.md": "# Sol\n+20–30% delegation bias\n",
+            "skills/luna-orchestra/SKILL.md": "# Luna\n+20–50% delegation bias; hard cap +50%\n",
+            "skills/sol-orchestra/SKILL.md": "# Sol\n+20–50% delegation bias; hard cap +50%\n",
             "skills/orchestrate/SKILL.md": "# Orchestrate\n",
             "config/global-astra.config.toml": (
                 'developer_instructions = "ASTRA_ROOT MANUAL_EXPERIMENTAL EXPLICIT_USER_OPT_IN CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
@@ -78,12 +78,12 @@ class GlobalPolicyTests(unittest.TestCase):
                 'model_reasoning_effort = "xhigh"\n'
             ),
             "config/global-gpt6-luna.config.toml": (
-                'developer_instructions = "GPT6_LUNA_ROOT +20–30% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
+                'developer_instructions = "GPT6_LUNA_ROOT +20–50% hard cap +50% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
                 'model = "gpt-6-luna"\n'
                 'model_reasoning_effort = "max"\n'
             ),
             "config/global-gpt6-sol.config.toml": (
-                'developer_instructions = "GPT6_SOL_ROOT +20–30% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
+                'developer_instructions = "GPT6_SOL_ROOT +20–50% hard cap +50% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
                 'model = "gpt-6-sol"\n'
                 'model_reasoning_effort = "high"\n'
             ),
@@ -303,7 +303,8 @@ class GlobalPolicyTests(unittest.TestCase):
             self.assertEqual(profile["model"], model)
             self.assertEqual(profile["model_reasoning_effort"], effort)
             self.assertIn(marker, profile["developer_instructions"])
-            self.assertIn("+20–30%", profile["developer_instructions"])
+            self.assertIn("+20–50%", profile["developer_instructions"])
+            self.assertIn("hard cap +50%", profile["developer_instructions"])
         for filename in ("default.toml", "explorer.toml", "worker.toml"):
             role = global_policy._toml_bytes(self.home / "agents" / filename)
             self.assertEqual(role["model"], "gpt-6-luna")
@@ -311,9 +312,11 @@ class GlobalPolicyTests(unittest.TestCase):
             self.assertFalse(role["agents"]["enabled"])
         for skill in ("luna-orchestra", "sol-orchestra"):
             text = (self.home / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
-            self.assertIn("+20–30%", text)
+            self.assertIn("+20–50%", text)
+            self.assertIn("hard cap +50%", text)
         global_instructions = (self.home / "AGENTS.md").read_text(encoding="utf-8")
-        self.assertIn("+20–30%", global_instructions)
+        self.assertIn("+20–50%", global_instructions)
+        self.assertIn("hard cap +50%", global_instructions)
         config = global_policy._toml_bytes(self.home / "config.toml")
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
         self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "max")

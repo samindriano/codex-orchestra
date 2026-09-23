@@ -58,15 +58,17 @@ A large task is not automatically HEAVY. A modest task can be LIGHT if several i
 | LIGHT | 2–3 independent ready paths; default for meaningful work | MAIN + 1–3 bounded local workers, launched concurrently |
 | HEAVY | 3–6 independent critical-path paths, broad separable migration/research, uncertain root cause, or high-value independent review | isolated ownership + concurrent local execution + milestone review |
 
-### Moderate delegation bias: +20–30%
+### Delegation calibration: approximately +20–50%, hard cap +50%
 
-For work already suitable for orchestration, use a soft **+20–30% delegation
-bias** over the prior default. In borderline DIRECT/LIGHT cases, prefer one
-configured worker when a bounded independent lane can run concurrently and
-materially shorten wall-clock time. This is a relative willingness on eligible
-tasks, not a quota, percentage-point target, or per-task worker-count increase.
-Keep trivial, sequential, and high-coordination work DIRECT; add a second worker
-only for another distinct ready lane whose benefit outweighs coordination cost.
+Aim for roughly **20–50% more willingness to delegate** eligible meaningful work
+than the prior default; hard cap +50%, not a measured guarantee or quota.
+Operationally, choose LIGHT with one configured worker in borderline DIRECT/LIGHT
+cases when a bounded independent lane is ready now, can run alongside MAIN's useful
+work, and is likely to shorten the critical path. Keep trivial, strictly
+sequential, high-coordination, privacy/security/authorization-constrained, or
+no-ready-lane work DIRECT. Add another worker only for a distinct ready lane whose
+expected benefit outweighs coordination and review cost; do not increase fan-out
+mechanically or treat this as permission to broaden scope.
 
 ### DIRECT is an exception for substantial work
 

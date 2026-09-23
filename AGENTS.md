@@ -57,15 +57,18 @@ Rules:
 
 Levels describe useful concurrency, not prestige or task difficulty.
 
-### Delegation calibration: +20–30%
+### Delegation calibration: approximately +20–50%, hard cap +50%
 
-For tasks already suitable for orchestration, use a soft **+20–30% delegation
-bias** over the prior default. When a bounded independent lane can start now and
-materially shorten elapsed time, lean toward one configured worker in borderline
-DIRECT/LIGHT cases. Treat this as a relative willingness on eligible tasks, not a
-quota, percentage-point target, or automatic increase in workers per task. Keep
-trivial, serial, and high-coordination work DIRECT; add workers only for distinct
-ready lanes whose benefit outweighs coordination and integration cost.
+Target an approximate **20–50% increase in willingness to delegate** eligible
+meaningful work over the prior default; hard cap +50%, not a quota or measured
+guarantee. Apply the increase mainly by choosing LIGHT with one configured worker
+in borderline DIRECT/LIGHT decisions when a bounded, non-overlapping lane is ready
+now, can run concurrently with MAIN's useful work, and is likely to shorten the
+critical path. Keep DIRECT for trivial, strictly sequential, high-coordination,
+privacy/security/authorization/scope-constrained work, or when no useful lane is
+ready. Do not increase worker count mechanically; add another only for a distinct
+ready lane whose expected benefit outweighs coordination and integration cost.
+This is not a percentage-point quota or permission to broaden task scope.
 
 ### DIRECT
 
