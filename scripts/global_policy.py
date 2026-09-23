@@ -1,0 +1,930 @@
+#!/usr/bin/env python3
+"""Install and verify the reusable Codex Orchestra global policy.
+
+The installer deliberately has a small write surface. Repository-owned text
+and profile files are copied to their canonical locations; an existing
+``config.toml`` is edited only at the worker defaults and descriptions, the
+local-only native OTel exporter settings, and, when explicitly requested, the
+context-management capability flag. Existing root model selections are
+preserved; a new config receives the documented baseline root defaults.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import sys
+import tempfile
+from datetime import datetime, timezone
+from typing import Any, Iterable
+import tomllib
+
+
+ASTRA_MODEL = "gpt-6-astra"
+LUNA_MODEL = "gpt-5.6-luna"
+LUNA_REASONING = "xhigh"
+GPT6_LUNA_MODEL = "gpt-6-luna"
+GPT6_SOL_MODEL = "gpt-6-sol"
+GPT6_LUNA_REASONING = "max"
+WORKER_MODEL = GPT6_LUNA_MODEL
+WORKER_REASONING = GPT6_LUNA_REASONING
+_ASTRA_MANUAL_MARKERS = ("MANUAL_EXPERIMENTAL", "EXPLICIT_USER_OPT_IN")
+
+_SOURCE_DESTINATIONS = (
+    ("policies/GLOBAL_AGENTS.md", "AGENTS.md", "text"),
+    # Keep the passive collector an explicit, non-recursive installation
+    # target.  It is intentionally not a skill or a profile and is not
+    # imported by normal Codex startup unless a user invokes it.
+    ("scripts/orchestra_telemetry.py", "scripts/orchestra_telemetry.py", "text"),
+    ("scripts/orchestra_dashboard.py", "scripts/orchestra_dashboard.py", "text"),
+    ("scripts/codex_benchmark_launcher.py", "launchers/codex_benchmark_launcher.py", "text"),
+    ("launchers/codex-standard.cmd", "launchers/codex-standard.cmd", "text"),
+    ("launchers/codex-fast.cmd", "launchers/codex-fast.cmd", "text"),
+    ("launchers/orchestra-dashboard.cmd", "launchers/orchestra-dashboard.cmd", "text"),
+    ("config/hooks.json", "hooks.json", "hooks"),
+    (
+        "skills/astra-decision-orchestrator/SKILL.md",
+        "skills/astra-decision-orchestrator/SKILL.md",
+        "text",
+    ),
+    ("skills/luna-orchestra/SKILL.md", "skills/luna-orchestra/SKILL.md", "text"),
+    ("skills/sol-orchestra/SKILL.md", "skills/sol-orchestra/SKILL.md", "text"),
+    ("skills/orchestrate/SKILL.md", "skills/orchestrate/SKILL.md", "text"),
+    ("config/global-astra.config.toml", "global-astra.config.toml", "profile"),
+    ("config/global-astra-low.config.toml", "global-astra-low.config.toml", "profile"),
+    ("config/global-astra-medium.config.toml", "global-astra-medium.config.toml", "profile"),
+    ("config/global-luna.config.toml", "global-luna.config.toml", "profile"),
+    ("config/global-gpt6-luna.config.toml", "global-gpt6-luna.config.toml", "profile"),
+    ("config/global-gpt6-sol.config.toml", "global-gpt6-sol.config.toml", "profile"),
+    ("config/agents/default.toml", "agents/default.toml", "role"),
+    ("config/agents/worker.toml", "agents/worker.toml", "role"),
+    ("config/agents/explorer.toml", "agents/explorer.toml", "role"),
+)
+
+_ROLE_MODELS = {
+    "default.toml": WORKER_MODEL,
+    "worker.toml": WORKER_MODEL,
+    "explorer.toml": WORKER_MODEL,
+}
+_PROFILE_MODELS = {
+    "global-astra.config.toml": ASTRA_MODEL,
+    "global-astra-low.config.toml": ASTRA_MODEL,
+    "global-astra-medium.config.toml": ASTRA_MODEL,
+    "global-luna.config.toml": LUNA_MODEL,
+    "global-gpt6-luna.config.toml": GPT6_LUNA_MODEL,
+    "global-gpt6-sol.config.toml": GPT6_SOL_MODEL,
+}
+_PROFILE_REASONING = {
+    "global-astra.config.toml": "medium",
+    "global-astra-low.config.toml": "low",
+    "global-astra-medium.config.toml": "medium",
+    "global-luna.config.toml": LUNA_REASONING,
+    "global-gpt6-luna.config.toml": "max",
+    "global-gpt6-sol.config.toml": "high",
+}
+_PROFILE_MARKERS = {
+    "global-astra.config.toml": "ASTRA_ROOT",
+    "global-astra-low.config.toml": "ASTRA_ROOT",
+    "global-astra-medium.config.toml": "ASTRA_ROOT",
+    "global-luna.config.toml": "LUNA_ROOT",
+    "global-gpt6-luna.config.toml": "GPT6_LUNA_ROOT",
+    "global-gpt6-sol.config.toml": "GPT6_SOL_ROOT",
+}
+_MANAGED_CONFIG_PATHS = {
+    ("agents", "default_subagent_model"): WORKER_MODEL,
+    ("agents", "default_subagent_reasoning_effort"): WORKER_REASONING,
+    ("agents", "default", "description"): "General-purpose fallback subagent using GPT-6 Luna Max.",
+    ("agents", "worker", "description"): "Execution-focused subagent using GPT-6 Luna Max.",
+    ("agents", "explorer", "description"): "Read-focused subagent using GPT-6 Luna Max.",
+    ("otel", "environment"): "codex-orchestra-local",
+    ("otel", "log_user_prompt"): False,
+    ("otel", "exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/logs", "protocol": "json"}},
+    ("otel", "metrics_exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/metrics", "protocol": "json"}},
+    ("otel", "trace_exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/traces", "protocol": "json"}},
+}
+_BASE_ROOT_DEFAULTS = {
+    ("model",): LUNA_MODEL,
+    ("model_reasoning_effort",): LUNA_REASONING,
+}
+_ROLE_CONFIG_PATHS = {
+    ("agents", "default", "config_file"): "./agents/default.toml",
+    ("agents", "worker", "config_file"): "./agents/worker.toml",
+    ("agents", "explorer", "config_file"): "./agents/explorer.toml",
+}
+_CONTEXT_PATH = ("features", "context_management", "experimental_mode")
+_TELEMETRY_HOOK_EVENTS = ("SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "SubagentStart", "SubagentStop", "Interrupt", "SessionEnd")
+_SECTION_RE = re.compile(r"^\s*\[([^\[\]]+)\]\s*(?:#.*)?(?:\r?\n)?$")
+_ASSIGNMENT_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(.*?)(\r?\n)?$")
+
+
+class PolicyError(RuntimeError):
+    """A fail-closed policy installation or verification error."""
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    return _sha256_bytes(path.read_bytes())
+
+
+def _toml_bytes(path: Path) -> dict[str, Any]:
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise PolicyError(f"invalid TOML {path}: {exc}") from exc
+
+
+def _toml_source(path: Path, data: bytes | None = None) -> dict[str, Any]:
+    try:
+        return tomllib.loads((data if data is not None else path.read_bytes()).decode("utf-8"))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
+        raise PolicyError(f"invalid TOML {path}: {exc}") from exc
+
+
+def _json_source(path: Path, data: bytes | None = None) -> dict[str, Any]:
+    try:
+        parsed = json.loads((data if data is not None else path.read_bytes()).decode("utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise PolicyError(f"invalid JSON {path}: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise PolicyError(f"hooks source must be a JSON object: {path}")
+    return parsed
+
+
+def _validate_hooks(data: dict[str, Any], path: Path) -> None:
+    hooks = data.get("hooks")
+    if not isinstance(hooks, dict):
+        raise PolicyError(f"{path} lacks a hooks object")
+    for event in _TELEMETRY_HOOK_EVENTS:
+        groups = hooks.get(event)
+        if not isinstance(groups, list) or not groups:
+            raise PolicyError(f"{path} lacks telemetry hook event {event}")
+        if not any(_is_telemetry_handler(handler) for group in groups if isinstance(group, dict) for handler in group.get("hooks", []) if isinstance(group.get("hooks"), list)):
+            raise PolicyError(f"{path} lacks a telemetry command for {event}")
+
+
+def _is_telemetry_handler(value: Any) -> bool:
+    if not isinstance(value, dict) or value.get("type") != "command":
+        return False
+    command = value.get("command")
+    windows = value.get("command_windows") or value.get("commandWindows")
+    return (
+        isinstance(command, str)
+        and "orchestra_telemetry.py\" hook" in command
+        and isinstance(windows, str)
+        and "orchestra_telemetry.py\\scripts" not in windows
+        and "orchestra_telemetry.py\" hook" in windows
+    )
+
+
+def _render_hook_data(data: dict[str, Any], codex_home: Path) -> dict[str, Any]:
+    rendered = json.loads(json.dumps(data))
+    posix_home = codex_home.as_posix()
+    windows_home = str(codex_home).replace("/", "\\")
+
+    def replace(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {key: replace(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [replace(child) for child in value]
+        if isinstance(value, str):
+            return value.replace("__CODEX_HOME_POSIX__", posix_home).replace("__CODEX_HOME_WINDOWS__", windows_home)
+        return value
+
+    return replace(rendered)
+
+
+def _merge_hook_data(existing: dict[str, Any], desired: dict[str, Any], path: Path) -> dict[str, Any]:
+    merged = json.loads(json.dumps(existing))
+    existing_hooks = merged.get("hooks")
+    desired_hooks = desired.get("hooks")
+    if existing_hooks is None:
+        existing_hooks = {}
+        merged["hooks"] = existing_hooks
+    if not isinstance(existing_hooks, dict) or not isinstance(desired_hooks, dict):
+        raise PolicyError(f"refusing to overwrite non-object hooks in {path}")
+    for event in _TELEMETRY_HOOK_EVENTS:
+        desired_groups = desired_hooks.get(event, [])
+        groups = existing_hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            raise PolicyError(f"refusing to overwrite non-list hooks.{event} in {path}")
+        for desired_group in desired_groups:
+            desired_handlers = desired_group.get("hooks", []) if isinstance(desired_group, dict) else []
+            found = False
+            for group in groups:
+                if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                    continue
+                for index, handler in enumerate(group["hooks"]):
+                    if _is_telemetry_handler(handler):
+                        group["hooks"][index] = desired_handlers[0]
+                        found = True
+                        break
+                if found:
+                    break
+            if not found:
+                groups.append(desired_group)
+    return merged
+
+
+def _render_hooks_bytes(source_data: dict[str, Any], codex_home: Path) -> bytes:
+    rendered = _render_hook_data(source_data, codex_home)
+    return (json.dumps(rendered, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def _get_path(data: dict[str, Any], path: Iterable[str]) -> Any:
+    value: Any = data
+    for component in path:
+        if not isinstance(value, dict) or component not in value:
+            return None
+        value = value[component]
+    return value
+
+
+def _set_path(data: dict[str, Any], path: Iterable[str], value: Any) -> None:
+    parts = list(path)
+    current = data
+    for component in parts[:-1]:
+        current = current.setdefault(component, {})
+    current[parts[-1]] = value
+
+
+def _scan_multiline_state(line: str, state: str | None) -> str | None:
+    """Track TOML multiline basic/literal strings without parsing assignments."""
+
+    index = 0
+    while index < len(line):
+        if state:
+            end = line.find(state, index)
+            if end < 0:
+                return state
+            # A TOML quote is escaped only for basic multiline strings.  A
+            # literal triple quote has no escape syntax.
+            if state == '"""':
+                backslashes = 0
+                cursor = end - 1
+                while cursor >= 0 and line[cursor] == "\\":
+                    backslashes += 1
+                    cursor -= 1
+                if backslashes % 2:
+                    index = end + 3
+                    continue
+            index = end + 3
+            state = None
+            continue
+
+        if line.startswith('"""', index):
+            state = '"""'
+            index += 3
+            continue
+        if line.startswith("'''", index):
+            state = "'''"
+            index += 3
+            continue
+        if line[index] == "#":
+            break
+        if line[index] in ('"', "'"):
+            quote = line[index]
+            index += 1
+            while index < len(line):
+                if line[index] == quote and (quote == "'" or line[index - 1] != "\\"):
+                    index += 1
+                    break
+                index += 1
+            continue
+        index += 1
+    return state
+
+
+def _section_ranges(text: str) -> tuple[list[str], dict[str, tuple[int, int]]]:
+    lines = text.splitlines(keepends=True)
+    ranges: dict[str, tuple[int, int]] = {}
+    current: str | None = None
+    start = 0
+    state: str | None = None
+    for index, line in enumerate(lines):
+        if state is None:
+            match = _SECTION_RE.match(line)
+            if match:
+                # Array-of-table headers are excluded by the regex, and a
+                # duplicate table is ambiguous for a surgical edit.
+                section = match.group(1).strip()
+                if section in ranges:
+                    raise PolicyError(f"ambiguous duplicate TOML table [{section}]")
+                if current is not None:
+                    ranges[current] = (start, index)
+                current = section
+                start = index
+        state = _scan_multiline_state(line, state)
+    if current is not None:
+        ranges[current] = (start, len(lines))
+    return lines, ranges
+
+
+def _comment_start(value: str) -> int | None:
+    state: str | None = None
+    index = 0
+    while index < len(value):
+        if state:
+            if value[index] == state and (state == "'" or index == 0 or value[index - 1] != "\\"):
+                state = None
+            index += 1
+            continue
+        if value[index] in ('"', "'"):
+            state = value[index]
+        elif value[index] == "#":
+            return index
+        index += 1
+    return None
+
+
+def _replace_key_in_section(
+    lines: list[str],
+    ranges: dict[str, tuple[int, int]],
+    section: str,
+    key: str,
+    rendered: str,
+) -> bool:
+    """Replace one simple scalar or insert it, preserving all other bytes."""
+
+    if section not in ranges:
+        return False
+    start, end = ranges[section]
+    found: list[int] = []
+    state: str | None = None
+    for index in range(start + 1, end):
+        line = lines[index]
+        if state is None:
+            match = _ASSIGNMENT_RE.match(line)
+            if match and match.group(2) == key:
+                found.append(index)
+        state = _scan_multiline_state(line, state)
+    if len(found) > 1:
+        raise PolicyError(f"ambiguous duplicate key {section}.{key}")
+    if found:
+        index = found[0]
+        match = _ASSIGNMENT_RE.match(lines[index])
+        assert match is not None
+        value = match.group(3)
+        comment = _comment_start(value)
+        suffix = ""
+        if comment is not None:
+            suffix = value[comment:]
+        newline = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
+        lines[index] = f"{match.group(1)}{key} = {rendered}{('  ' + suffix.lstrip()) if suffix else ''}{newline}"
+        return True
+
+    newline = "\r\n" if any(line.endswith("\r\n") for line in lines) else "\n"
+    insertion = f"{key} = {rendered}{newline}"
+    lines.insert(end, insertion)
+    # Later ranges are invalid after an insertion; callers perform one edit at
+    # a time and recompute them.
+    return True
+
+
+def _replace_key_at_top_level(text: str, key: str, rendered: str) -> str:
+    """Replace or insert one assignment before the first TOML table."""
+
+    lines, ranges = _section_ranges(text)
+    table_starts = [start for start, _ in ranges.values()]
+    first_table = min(table_starts, default=len(lines))
+    found: list[int] = []
+    state: str | None = None
+    for index in range(first_table):
+        line = lines[index]
+        if state is None:
+            match = _ASSIGNMENT_RE.match(line)
+            if match and match.group(2) == key:
+                found.append(index)
+        state = _scan_multiline_state(line, state)
+    if len(found) > 1:
+        raise PolicyError(f"ambiguous duplicate key {key}")
+    if found:
+        index = found[0]
+        match = _ASSIGNMENT_RE.match(lines[index])
+        assert match is not None
+        value = match.group(3)
+        comment = _comment_start(value)
+        suffix = ""
+        if comment is not None:
+            suffix = value[comment:]
+        newline = "\r\n" if lines[index].endswith("\r\n") else "\n" if lines[index].endswith("\n") else ""
+        lines[index] = f"{match.group(1)}{key} = {rendered}{('  ' + suffix.lstrip()) if suffix else ''}{newline}"
+        return "".join(lines)
+
+    newline = "\r\n" if any(line.endswith("\r\n") for line in lines) else "\n"
+    lines.insert(first_table, f"{key} = {rendered}{newline}")
+    return "".join(lines)
+
+
+def _ensure_section(text: str, section: str, key: str, rendered: str) -> str:
+    lines, ranges = _section_ranges(text)
+    if section in ranges:
+        _replace_key_in_section(lines, ranges, section, key, rendered)
+        return "".join(lines)
+
+    newline = "\r\n" if "\r\n" in text else "\n"
+    if text and not text.endswith(("\n", "\r")):
+        text += newline
+    return text + f"[{section}]{newline}{key} = {rendered}{newline}"
+
+
+def _toml_render(value: Any) -> str:
+    """Render the small scalar/inline-table values owned by the installer."""
+
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, dict):
+        parts = []
+        for key, child in value.items():
+            rendered_key = key if re.fullmatch(r"[A-Za-z0-9_-]+", str(key)) else json.dumps(str(key))
+            parts.append(f"{rendered_key} = {_toml_render(child)}")
+        return "{ " + ", ".join(parts) + " }"
+    raise PolicyError(f"unsupported managed TOML value: {value!r}")
+
+
+def _edit_config(config_path: Path, enable_context_management: bool) -> tuple[bytes, bytes, dict[str, Any]]:
+    before = config_path.read_bytes() if config_path.exists() else b""
+    before_data = _toml_source(config_path, before)
+    text = before.decode("utf-8")
+
+    # Recompute table ranges after each insertion.  This keeps edits safe when
+    # a fixture has no existing key/table and avoids broad regex rewrites.
+    for path, value in _MANAGED_CONFIG_PATHS.items():
+        if len(path) == 1:
+            text = _replace_key_at_top_level(text, path[0], _toml_render(value))
+            continue
+        section, key = ".".join(path[:-1]), path[-1]
+        lines, ranges = _section_ranges(text)
+        if section in ranges:
+            _replace_key_in_section(lines, ranges, section, key, _toml_render(value))
+            text = "".join(lines)
+        else:
+            text = _ensure_section(text, section, key, _toml_render(value))
+
+    # Pin a predictable root only for a newly created CODEX_HOME. An existing
+    # root model is user/session state and must survive worker-policy updates.
+    if not before:
+        for path, value in _BASE_ROOT_DEFAULTS.items():
+            text = _replace_key_at_top_level(text, path[0], _toml_render(value))
+
+    # A newly created base config needs role pins so the installed legacy
+    # ``./agents/*.toml`` files are actually reachable.  Existing configs are
+    # left byte-for-byte alone at these paths and are checked separately.
+    if not before:
+        for path, value in _ROLE_CONFIG_PATHS.items():
+            section = ".".join(path[:-1])
+            text = _ensure_section(text, section, path[-1], _toml_render(value))
+
+    if enable_context_management:
+        section = "features.context_management"
+        text = _ensure_section(text, section, "experimental_mode", "true")
+
+    after = text.encode("utf-8")
+    after_data = _toml_source(config_path, after)
+    owned = set(_MANAGED_CONFIG_PATHS)
+    if not before:
+        owned.update(_BASE_ROOT_DEFAULTS)
+        owned.update(_ROLE_CONFIG_PATHS)
+    if enable_context_management:
+        owned.add(_CONTEXT_PATH)
+    _assert_unowned_semantic_equivalence(before_data, after_data, owned, config_path)
+    return before, after, after_data
+
+
+def _assert_unowned_semantic_equivalence(
+    before: dict[str, Any], after: dict[str, Any], owned_paths: set[tuple[str, ...]], path: Path
+) -> None:
+    def prune(value: Any, prefix: tuple[str, ...]) -> tuple[bool, Any]:
+        if prefix in owned_paths:
+            return False, None
+        if isinstance(value, dict):
+            result: dict[str, Any] = {}
+            for key, child in value.items():
+                keep, cleaned = prune(child, prefix + (str(key),))
+                if keep:
+                    result[key] = cleaned
+            return bool(result), result
+        return True, value
+
+    _, clean_before = prune(before, ())
+    _, clean_after = prune(after, ())
+    if clean_before != clean_after:
+        raise PolicyError(f"surgical TOML edit changed an unowned setting in {path}")
+
+
+def _validate_profile(
+    data: dict[str, Any],
+    path: Path,
+    expected_model: str,
+    role: bool,
+    marker: str,
+    expected_reasoning: str,
+) -> None:
+    developer_instructions = data.get("developer_instructions")
+    if not isinstance(developer_instructions, str) or not developer_instructions.strip():
+        raise PolicyError(f"{path} lacks a non-empty developer_instructions marker")
+    if marker not in developer_instructions:
+        raise PolicyError(f"{path} developer_instructions must include {marker!r}")
+    if expected_model == ASTRA_MODEL:
+        for manual_marker in _ASTRA_MANUAL_MARKERS:
+            if manual_marker not in developer_instructions:
+                raise PolicyError(f"{path} must include Astra manual marker {manual_marker!r}")
+    if data.get("model") != expected_model:
+        raise PolicyError(f"{path} model must be {expected_model!r}")
+    if data.get("model_reasoning_effort") != expected_reasoning:
+        raise PolicyError(f"{path} model_reasoning_effort must be {expected_reasoning!r}")
+    if role:
+        agents = data.get("agents")
+        if not isinstance(agents, dict) or agents.get("enabled") is not False:
+            raise PolicyError(f"{path} [agents].enabled must be false")
+
+
+def _validate_existing_profile(target: Path, source_data: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    if not target.exists():
+        return None
+    target_data = _toml_bytes(target)
+    def unknown_paths(target_value: Any, source_value: Any, prefix: tuple[str, ...] = ()) -> list[str]:
+        if isinstance(target_value, dict):
+            result: list[str] = []
+            source_dict = source_value if isinstance(source_value, dict) else {}
+            for key, value in target_value.items():
+                child = prefix + (str(key),)
+                if key not in source_dict:
+                    result.append(".".join(child))
+                else:
+                    result.extend(unknown_paths(value, source_dict[key], child))
+            return result
+        return []
+
+    unknown = unknown_paths(target_data, source_data)
+    if unknown:
+        raise PolicyError(f"refusing to clobber unrecognized settings in {target}: {', '.join(unknown)}")
+    return target_data
+
+
+def _validate_source_tree(source_root: Path) -> list[tuple[Path, Path, str, bytes, dict[str, Any] | None]]:
+    planned: list[tuple[Path, Path, str, bytes, dict[str, Any] | None]] = []
+    for source_rel, target_rel, kind in _SOURCE_DESTINATIONS:
+        source = source_root / Path(source_rel)
+        if not source.is_file():
+            raise PolicyError(f"missing canonical source artifact: {source}")
+        data = source.read_bytes()
+        parsed: dict[str, Any] | None = None
+        if kind in {"profile", "role"}:
+            parsed = _toml_source(source, data)
+            if kind == "profile":
+                profile_name = Path(source_rel).name
+                expected = _PROFILE_MODELS[profile_name]
+                marker = _PROFILE_MARKERS[profile_name]
+                _validate_profile(
+                    parsed,
+                    source,
+                    expected,
+                    role=False,
+                    marker=marker,
+                    expected_reasoning=_PROFILE_REASONING[Path(source_rel).name],
+                )
+            else:
+                expected = _ROLE_MODELS[Path(source_rel).name]
+                _validate_profile(
+                    parsed,
+                    source,
+                    expected,
+                    role=True,
+                    marker="LUNA_WORKER",
+                    expected_reasoning=WORKER_REASONING,
+                )
+        elif kind == "hooks":
+            parsed = _json_source(source, data)
+            _validate_hooks(parsed, source)
+        planned.append((source, Path(target_rel), kind, data, parsed))
+    return planned
+
+
+def _config_file_has_legacy_agent_pins(data: dict[str, Any], path: Path) -> None:
+    for role in ("default", "worker", "explorer"):
+        table = data.get("agents", {}).get(role) if isinstance(data.get("agents"), dict) else None
+        if not isinstance(table, dict):
+            continue
+        expected = f"./agents/{role}.toml"
+        if "config_file" in table and table["config_file"] != expected:
+            raise PolicyError(f"{path} [agents.{role}].config_file must remain {expected!r}")
+
+
+def _plan(
+    source_root: Path, codex_home: Path, enable_context_management: bool
+) -> tuple[list[tuple[Path, Path, bytes, str]], tuple[Path, bytes, bytes, dict[str, Any]] | None]:
+    source_entries = _validate_source_tree(source_root)
+    changes: list[tuple[Path, Path, bytes, str]] = []
+    for source, target_rel, kind, data, parsed in source_entries:
+        target = codex_home / target_rel
+        if target.exists() and not target.is_file():
+            raise PolicyError(f"installed destination is not a file: {target}")
+        if target.exists() and kind in {"profile", "role"}:
+            _validate_existing_profile(target, parsed or {}, kind)
+        desired = data
+        if kind == "hooks":
+            desired = _render_hooks_bytes(parsed or {}, codex_home)
+            if target.is_file():
+                existing_data = _json_source(target)
+                desired_data = json.loads(desired.decode("utf-8"))
+                desired = (json.dumps(_merge_hook_data(existing_data, desired_data, target), indent=2, sort_keys=True) + "\n").encode("utf-8")
+        existing = target.read_bytes() if target.is_file() else None
+        if existing != desired:
+            changes.append((source, target, desired, kind))
+
+    config_change: tuple[Path, bytes, bytes, dict[str, Any]] | None = None
+    config_path = codex_home / "config.toml"
+    if config_path.exists() or enable_context_management:
+        before, after, after_data = _edit_config(config_path, enable_context_management)
+        _config_file_has_legacy_agent_pins(after_data, config_path)
+        if before != after:
+            config_change = (config_path, before, after, after_data)
+    else:
+        # The global role files need a base config even on a fresh CODEX_HOME.
+        before, after, after_data = _edit_config(config_path, False)
+        _config_file_has_legacy_agent_pins(after_data, config_path)
+        config_change = (config_path, before, after, after_data)
+    return changes, config_change
+
+
+def _backup_dir(codex_home: Path) -> Path:
+    root = codex_home / "orchestra-backups"
+    if root.exists() and not root.is_dir():
+        raise PolicyError(f"backup path is not a directory: {root}")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    candidate = root / stamp
+    suffix = 0
+    while candidate.exists():
+        suffix += 1
+        candidate = root / f"{stamp}-{suffix}"
+    return candidate
+
+
+def _atomic_write(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+
+
+def _copy_backup(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
+def _manifest(
+    codex_home: Path,
+    backup_path: Path,
+    entries: list[tuple[Path, Path, bytes, str]],
+    config_change: tuple[Path, bytes, bytes, dict[str, Any]] | None,
+    backups: list[dict[str, str]],
+    status: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    installed: list[dict[str, str]] = []
+    for _, target, data, _ in entries:
+        if target.is_file():
+            installed.append({"path": target.relative_to(codex_home).as_posix(), "sha256": _sha256_file(target)})
+        else:
+            installed.append({"path": target.relative_to(codex_home).as_posix(), "sha256": _sha256_bytes(data)})
+    if config_change is not None:
+        target = config_change[0]
+        installed.append({"path": target.relative_to(codex_home).as_posix(), "sha256": _sha256_file(target)})
+    payload: dict[str, Any] = {
+        "version": 1,
+        "status": status,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "codex_home": str(codex_home),
+        "installed": installed,
+        "backups": backups,
+    }
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def install(
+    codex_home: Path | str | None = None,
+    *,
+    dry_run: bool = False,
+    enable_context_management: bool = False,
+    source_root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Plan or install the global policy and return a machine-readable report."""
+
+    home = Path(codex_home or os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser().resolve()
+    root = Path(source_root).resolve() if source_root is not None else Path(__file__).resolve().parents[1]
+    entries, config_change = _plan(root, home, enable_context_management)
+    changed_targets = [target for _, target, _, _ in entries]
+    if config_change is not None:
+        changed_targets.append(config_change[0])
+    report: dict[str, Any] = {
+        "verdict": "DRY_RUN" if dry_run else "PASS",
+        "changed_files": [str(path.relative_to(home).as_posix()) for path in changed_targets],
+        "backup_dir": None,
+    }
+    if dry_run or not changed_targets:
+        return report
+
+    backup_dir = _backup_dir(home)
+    backups: list[dict[str, str]] = []
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=False)
+        for target in changed_targets:
+            if target.is_file():
+                backup_target = backup_dir / target.relative_to(home)
+                _copy_backup(target, backup_target)
+                backups.append(
+                    {
+                        "path": target.relative_to(home).as_posix(),
+                        "backup": backup_target.relative_to(backup_dir).as_posix(),
+                        "sha256": _sha256_file(target),
+                    }
+                )
+
+        def check_config_unchanged() -> None:
+            if config_change is not None:
+                path, before, _, _ = config_change
+                current = path.read_bytes() if path.exists() else b""
+                if current != before:
+                    raise PolicyError("config.toml changed during installation; preserve it and rerun")
+
+        check_config_unchanged()
+        for _, target, data, _ in entries:
+            _atomic_write(target, data)
+        if config_change is not None:
+            check_config_unchanged()
+            _atomic_write(config_change[0], config_change[2])
+
+        payload = _manifest(home, backup_dir, entries, config_change, backups, "complete")
+        _atomic_write(backup_dir / "manifest.json", json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n")
+        report["backup_dir"] = str(backup_dir)
+        report["manifest"] = str(backup_dir / "manifest.json")
+        return report
+    except BaseException as exc:
+        # A partial manifest records the failure and hashes of any files that
+        # were successfully replaced.  It is best-effort and never masks the
+        # original exception.
+        try:
+            payload = _manifest(home, backup_dir, entries, config_change, backups, "partial_failure", str(exc))
+            _atomic_write(backup_dir / "manifest.json", json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n")
+        except BaseException:
+            pass
+        raise PolicyError(f"partial installation; backup={backup_dir}: {exc}") from exc
+
+
+def verify(
+    codex_home: Path | str | None = None,
+    *,
+    source_root: Path | str | None = None,
+    require_context_management: bool = False,
+) -> dict[str, Any]:
+    """Verify installed hashes, profile invariants, and base config pins."""
+
+    home = Path(codex_home or os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser().resolve()
+    root = Path(source_root).resolve() if source_root is not None else Path(__file__).resolve().parents[1]
+    entries = _validate_source_tree(root)
+    verified: list[str] = []
+    for source, target_rel, kind, data, parsed in entries:
+        target = home / target_rel
+        if not target.is_file():
+            raise PolicyError(f"missing installed file: {target}")
+        if kind == "hooks":
+            expected = _render_hooks_bytes(parsed or {}, home)
+            actual = _json_source(target)
+            desired = _json_source(target, expected)
+            _validate_hooks(actual, target)
+            for event in _TELEMETRY_HOOK_EVENTS:
+                if not any(
+                    _is_telemetry_handler(handler)
+                    and handler == desired["hooks"][event][0]["hooks"][0]
+                    for group in actual["hooks"].get(event, [])
+                    if isinstance(group, dict) and isinstance(group.get("hooks"), list)
+                    for handler in group["hooks"]
+                ):
+                    raise PolicyError(f"telemetry hook mismatch for {event}: {target}")
+        elif target.read_bytes() != data:
+            raise PolicyError(f"hash/content mismatch: {target}")
+        if kind in {"profile", "role"}:
+            profile_name = Path(source).name
+            expected = (_PROFILE_MODELS if kind == "profile" else _ROLE_MODELS)[profile_name]
+            marker = "LUNA_WORKER" if kind == "role" else _PROFILE_MARKERS[profile_name]
+            expected_reasoning = (
+                WORKER_REASONING
+                if kind == "role"
+                else _PROFILE_REASONING[profile_name]
+            )
+            _validate_profile(
+                _toml_bytes(target),
+                target,
+                expected,
+                role=kind == "role",
+                marker=marker,
+                expected_reasoning=expected_reasoning,
+            )
+        verified.append(target.relative_to(home).as_posix())
+
+    config_path = home / "config.toml"
+    if not config_path.is_file():
+        raise PolicyError(f"missing installed base config: {config_path}")
+    config_data = _toml_bytes(config_path)
+    for path, expected in _MANAGED_CONFIG_PATHS.items():
+        if _get_path(config_data, path) != expected:
+            raise PolicyError(f"{config_path} {'.'.join(path)} must be {expected!r}")
+    _config_file_has_legacy_agent_pins(config_data, config_path)
+    verified.append("config.toml")
+    context_enabled = _get_path(config_data, _CONTEXT_PATH) is True
+    if require_context_management and not context_enabled:
+        raise PolicyError(f"{config_path} features.context_management.experimental_mode must be true")
+    return {
+        "verdict": "PASS",
+        "verified_files": verified,
+        "model": _get_path(config_data, ("model",)),
+        "model_reasoning_effort": _get_path(config_data, ("model_reasoning_effort",)),
+        "default_subagent_model": _get_path(config_data, ("agents", "default_subagent_model")),
+        "default_subagent_reasoning_effort": _get_path(
+            config_data, ("agents", "default_subagent_reasoning_effort")
+        ),
+        "context_management_enabled": context_enabled,
+    }
+
+
+def _resolve_cli_home(value: str | None) -> Path:
+    return Path(value or os.environ.get("CODEX_HOME") or (Path.home() / ".codex")).expanduser().resolve()
+
+
+def _print_report(report: dict[str, Any]) -> None:
+    print(f"VERDICT={report['verdict']}")
+    for key in (
+        "changed_files",
+        "verified_files",
+        "model",
+        "model_reasoning_effort",
+        "default_subagent_model",
+        "default_subagent_reasoning_effort",
+    ):
+        if key in report:
+            print(f"{key}=" + json.dumps(report[key], separators=(",", ":")))
+    if report.get("backup_dir"):
+        print(f"backup_dir={report['backup_dir']}")
+    if report.get("manifest"):
+        print(f"manifest={report['manifest']}")
+    if "context_management_enabled" in report:
+        print(f"context_management_enabled={str(report['context_management_enabled']).lower()}")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--codex-home", dest="global_codex_home", default=None)
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    install_parser = subparsers.add_parser("install", help="install or dry-run the global policy")
+    install_parser.add_argument("--codex-home", dest="codex_home", default=argparse.SUPPRESS)
+    install_parser.add_argument("--dry-run", action="store_true")
+    install_parser.add_argument("--enable-context-management", action="store_true")
+
+    verify_parser = subparsers.add_parser("verify", help="verify installed policy and config invariants")
+    verify_parser.add_argument("--codex-home", dest="codex_home", default=argparse.SUPPRESS)
+    verify_parser.add_argument("--require-context-management", action="store_true")
+
+    args = parser.parse_args(argv)
+    home = _resolve_cli_home(getattr(args, "codex_home", None) if hasattr(args, "codex_home") else args.global_codex_home)
+    try:
+        if args.command == "install":
+            report = install(
+                home,
+                dry_run=args.dry_run,
+                enable_context_management=args.enable_context_management,
+            )
+        else:
+            report = verify(home, require_context_management=args.require_context_management)
+        _print_report(report)
+        return 0
+    except PolicyError as exc:
+        print("VERDICT=FAIL")
+        print(f"error={exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -57,6 +57,16 @@ Rules:
 
 Levels describe useful concurrency, not prestige or task difficulty.
 
+### Delegation calibration: +20–30%
+
+For tasks already suitable for orchestration, use a soft **+20–30% delegation
+bias** over the prior default. When a bounded independent lane can start now and
+materially shorten elapsed time, lean toward one configured worker in borderline
+DIRECT/LIGHT cases. Treat this as a relative willingness on eligible tasks, not a
+quota, percentage-point target, or automatic increase in workers per task. Keep
+trivial, serial, and high-coordination work DIRECT; add workers only for distinct
+ready lanes whose benefit outweighs coordination and integration cost.
+
 ### DIRECT
 
 Use only when the task is small, tightly bounded, or inherently sequential and there is at most one useful immediate workstream.

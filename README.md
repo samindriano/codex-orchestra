@@ -70,7 +70,9 @@ Model strength and orchestration intensity are independent:
 - stronger/expensive model: **bounded decision-changing escalation**, not permanent orchestration overhead;
 - explicit user model policy always wins.
 
-For the current IDX workflow, the intended mapping is **Luna xhigh** for MAIN/workers, with **Sol High** reserved for difficult architecture conflicts, repeated failures, suspicious research results, or final high-risk gates.
+For Codex profile-backed runs, `global-gpt6-luna` selects a GPT-6 Luna Max root and `global-gpt6-sol` selects a GPT-6 Sol High root. Both pin the configured `default`, `explorer`, and `worker` roles to GPT-6 Luna Max. `global-luna` remains the legacy GPT-5.6 Luna XHigh profile; Astra profiles remain explicit and manual-only.
+
+Use a soft **+20–30% delegation bias** for tasks already suitable for orchestration: in borderline DIRECT/LIGHT cases, prefer one configured worker when a bounded independent lane can materially shorten wall-clock time. This is not a quota or an automatic per-task worker-count increase; trivial, serial, and high-coordination tasks stay DIRECT.
 
 ## Control plane
 
