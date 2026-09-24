@@ -6,9 +6,9 @@ description: Throughput-oriented orchestration selected by LUNA_ROOT or GPT6_LUN
 # Luna Orchestra
 
 Optimize useful verified work per constrained resource, subject to correctness and
-user intent. The selected profile pins the root model and effort: legacy `global-luna`
-uses GPT-5.6 Luna XHigh; `global-gpt6-luna` uses GPT-6 Luna Max. Every configured
-subagent role is GPT-6 Luna Max. Execution width is a separate choice. Do not change
+user intent. The default root and every configured subagent role use GPT-6 Luna
+XHigh (`gpt-6-luna`, `xhigh`). `global-gpt6-luna` and the backward-compatible
+`global-luna` alias use this same root. Execution width is a separate choice. Do not change
 model families or self-upgrade workers. Astra is manual-only and is never an automatic
 escalation for difficulty, conflict, review, HEAVY work, ambiguity, or disagreement.
 
@@ -37,7 +37,7 @@ use isolated worktrees only where writes would collide. Workers do not spawn wor
 
 Each assignment names the exact source/commit where relevant, question, ownership,
 prohibited changes, deliverable, verification, and stop point. Use runtime-pinned
-`default`, `explorer`, or `worker` roles (`gpt-6-luna`, `max`) whenever workers are
+`default`, `explorer`, or `worker` roles (`gpt-6-luna`, `xhigh`) whenever workers are
 used. Omit spawn-level model and reasoning-effort overrides. For custom roles,
 verify their effective model and effort before use. If pinning cannot be
 established, stay DIRECT and report the gap; never silently change the configured

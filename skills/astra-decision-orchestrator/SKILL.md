@@ -1,6 +1,6 @@
 ---
 name: astra-decision-orchestrator
-description: MANUAL_EXPERIMENTAL / EXPLICIT_USER_OPT_IN Astra orchestration. Frame, explore, delegate useful bounded work to GPT-6 Luna Max, synthesize evidence, and make final judgments.
+description: MANUAL_EXPERIMENTAL / EXPLICIT_USER_OPT_IN Astra orchestration. Frame, explore, delegate useful bounded work to GPT-6 Luna XHigh, synthesize evidence, and make final judgments.
 ---
 
 # Astra Decision Orchestrator
@@ -10,7 +10,7 @@ only from an explicitly selected Astra profile or an explicit `ASTRA_ROOT` runti
 marker. Never auto-select or auto-escalate Astra for difficulty, conflict, review,
 HEAVY work, ambiguity, or disagreement. The selected profile/session supplies
 Astra's reasoning effort (for example Low or Medium); this skill never changes it.
-Any delegated workers remain GPT-6 Luna Max. If the selected effort appears
+Any delegated workers remain GPT-6 Luna XHigh. If the selected effort appears
 insufficient, report the unresolved issue instead of silently escalating.
 
 Understand enough to make the next decision. Explore freely when evidence may
@@ -46,7 +46,7 @@ its evidence can materially improve the decision. De-escalate when dependencies
 become sequential. Workers do not spawn workers.
 
 Use configured `default`, `explorer`, or `worker` roles pinned to `gpt-6-luna` /
-`max`. Do not infer worker settings from the root or prompt. Inspect role metadata
+`xhigh`. Do not infer worker settings from the root or prompt. Inspect role metadata
 when available; if pinning is absent or contradicted, do not spawn. Do not create
 Astra workers by default: normal Astra concurrency is one MAIN. Keep the selected
 effort unchanged unless the user explicitly starts another profile or session with

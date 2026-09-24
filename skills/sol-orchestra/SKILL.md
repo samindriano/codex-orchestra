@@ -1,13 +1,13 @@
 ---
 name: sol-orchestra
-description: Model-pinned orchestration for GPT6_SOL_ROOT. Keep GPT-6 Sol High as the root and use configured GPT-6 Luna Max roles for bounded independent work.
+description: Explicit GPT6_SOL_ROOT override. Keep GPT-6 Sol High as the requested root and use configured GPT-6 Luna XHigh roles for bounded independent work.
 ---
 
 # Sol Orchestra
 
 Use this policy only when an explicitly selected profile sets `GPT6_SOL_ROOT`.
 That profile pins the root to `gpt-6-sol` / `high`; every configured subagent role
-is pinned to `gpt-6-luna` / `max`. Do not infer a different model from task
+is pinned to `gpt-6-luna` / `xhigh`. Do not infer a different model from task
 difficulty, and do not switch to Ultra because it enables automatic delegation.
 If effective session or role metadata contradicts these pins, do not delegate;
 resolve the mismatch first.

@@ -70,7 +70,7 @@ Model strength and orchestration intensity are independent:
 - stronger/expensive model: **bounded decision-changing escalation**, not permanent orchestration overhead;
 - explicit user model policy always wins.
 
-For Codex profile-backed runs, `global-gpt6-luna` selects a GPT-6 Luna Max root and `global-gpt6-sol` selects a GPT-6 Sol High root. Both pin the configured `default`, `explorer`, and `worker` roles to GPT-6 Luna Max. `global-luna` remains the legacy GPT-5.6 Luna XHigh profile; Astra profiles remain explicit and manual-only.
+The default root and configured `default`, `explorer`, and `worker` roles use GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`). `global-gpt6-luna` and the backward-compatible `global-luna` alias use that same root. `global-gpt6-sol` and Astra remain explicit user/session overrides; all profiles keep worker roles on GPT-6 Luna XHigh.
 
 Aim for approximately **+20–50% more willingness to delegate** eligible meaningful work than the prior default; hard cap +50%, not a measured guarantee or quota. Operationally, prefer LIGHT with one configured worker in borderline DIRECT/LIGHT cases when a bounded independent lane is ready, can run alongside MAIN's useful work, and is likely to shorten the critical path. Keep trivial, serial, high-coordination, security/authorization-constrained, or no-ready-lane tasks DIRECT; add workers only for distinct ready lanes, never mechanically per task.
 

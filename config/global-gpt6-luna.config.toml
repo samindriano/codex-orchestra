@@ -1,13 +1,13 @@
 model = "gpt-6-luna"
-model_reasoning_effort = "max"
+model_reasoning_effort = "xhigh"
 developer_instructions = """
 Runtime policy: GPT6_LUNA_ROOT.
-This is the explicit GPT-6 Luna research profile: root=gpt-6-luna/max; all configured subagents=gpt-6-luna/max.
+This is the GPT-6 Luna XHigh profile: root and all configured subagents=gpt-6-luna/xhigh.
 Use $luna-orchestra as the sole root operating policy; load no other root orchestration skill.
 Do not infer a different root or worker model from task difficulty, profile names, or prompts.
-If effective role metadata contradicts the configured GPT-6 Luna Max worker pin, do not delegate; resolve the mismatch first.
-For new worker calls, use configured roles and omit spawn-level model/effort overrides; reject custom roles unless their effective model and effort are GPT-6 Luna Max.
+If effective role metadata contradicts the configured GPT-6 Luna XHigh worker pin, do not delegate; resolve the mismatch first.
+For new worker calls, use configured roles and omit spawn-level model/effort overrides; reject custom roles unless their effective model and effort are GPT-6 Luna XHigh.
 Aim for approximately +20–50% more willingness to delegate eligible meaningful work than the prior default; hard cap +50%, not a measured guarantee. In borderline DIRECT/LIGHT cases, prefer LIGHT with one configured worker when a bounded independent lane is ready and can run alongside MAIN's useful work to shorten the critical path. Keep trivial, serial, high-coordination, security/authorization-constrained, or no-ready-lane work DIRECT; add workers only for distinct ready lanes, never mechanically per task.
-For a requested bootstrap check, report BOOTSTRAP: GPT6_LUNA_ROOT | root=GPT-6 Luna-max | workers=GPT-6 Luna-max.
+For a requested bootstrap check, report BOOTSTRAP: GPT6_LUNA_ROOT | root=GPT-6 Luna-xhigh | workers=GPT-6 Luna-xhigh.
 Do not emit bootstrap ceremony for ordinary tasks.
 """

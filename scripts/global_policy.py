@@ -26,11 +26,11 @@ import tomllib
 
 
 ASTRA_MODEL = "gpt-6-astra"
-LUNA_MODEL = "gpt-5.6-luna"
+LUNA_MODEL = "gpt-6-luna"
 LUNA_REASONING = "xhigh"
 GPT6_LUNA_MODEL = "gpt-6-luna"
 GPT6_SOL_MODEL = "gpt-6-sol"
-GPT6_LUNA_REASONING = "max"
+GPT6_LUNA_REASONING = "xhigh"
 WORKER_MODEL = GPT6_LUNA_MODEL
 WORKER_REASONING = GPT6_LUNA_REASONING
 _ASTRA_MANUAL_MARKERS = ("MANUAL_EXPERIMENTAL", "EXPLICIT_USER_OPT_IN")
@@ -84,7 +84,7 @@ _PROFILE_REASONING = {
     "global-astra-low.config.toml": "low",
     "global-astra-medium.config.toml": "medium",
     "global-luna.config.toml": LUNA_REASONING,
-    "global-gpt6-luna.config.toml": "max",
+    "global-gpt6-luna.config.toml": GPT6_LUNA_REASONING,
     "global-gpt6-sol.config.toml": "high",
 }
 _PROFILE_MARKERS = {
@@ -98,9 +98,9 @@ _PROFILE_MARKERS = {
 _MANAGED_CONFIG_PATHS = {
     ("agents", "default_subagent_model"): WORKER_MODEL,
     ("agents", "default_subagent_reasoning_effort"): WORKER_REASONING,
-    ("agents", "default", "description"): "General-purpose fallback subagent using GPT-6 Luna Max.",
-    ("agents", "worker", "description"): "Execution-focused subagent using GPT-6 Luna Max.",
-    ("agents", "explorer", "description"): "Read-focused subagent using GPT-6 Luna Max.",
+    ("agents", "default", "description"): "General-purpose fallback subagent using GPT-6 Luna XHigh.",
+    ("agents", "worker", "description"): "Execution-focused subagent using GPT-6 Luna XHigh.",
+    ("agents", "explorer", "description"): "Read-focused subagent using GPT-6 Luna XHigh.",
     ("otel", "environment"): "codex-orchestra-local",
     ("otel", "log_user_prompt"): False,
     ("otel", "exporter"): {"otlp-http": {"endpoint": "http://127.0.0.1:4318/v1/logs", "protocol": "json"}},

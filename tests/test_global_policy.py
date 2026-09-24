@@ -74,13 +74,13 @@ class GlobalPolicyTests(unittest.TestCase):
             ),
             "config/global-luna.config.toml": (
                 'developer_instructions = "LUNA_ROOT CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
-                'model = "gpt-5.6-luna"\n'
+                'model = "gpt-6-luna"\n'
                 'model_reasoning_effort = "xhigh"\n'
             ),
             "config/global-gpt6-luna.config.toml": (
                 'developer_instructions = "GPT6_LUNA_ROOT +20–50% hard cap +50% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
                 'model = "gpt-6-luna"\n'
-                'model_reasoning_effort = "max"\n'
+                'model_reasoning_effort = "xhigh"\n'
             ),
             "config/global-gpt6-sol.config.toml": (
                 'developer_instructions = "GPT6_SOL_ROOT +20–50% hard cap +50% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
@@ -92,21 +92,21 @@ class GlobalPolicyTests(unittest.TestCase):
                 'description = "default"\n'
                 'developer_instructions = "LUNA_WORKER CODEX_ORCHESTRA_GLOBAL_POLICY_V1 default"\n'
                 'model = "gpt-6-luna"\n'
-                'model_reasoning_effort = "max"\n[agents]\nenabled = false\n'
+                'model_reasoning_effort = "xhigh"\n[agents]\nenabled = false\n'
             ),
             "config/agents/worker.toml": (
                 'name = "worker"\n'
                 'description = "worker"\n'
                 'developer_instructions = "LUNA_WORKER CODEX_ORCHESTRA_GLOBAL_POLICY_V1 worker"\n'
                 'model = "gpt-6-luna"\n'
-                'model_reasoning_effort = "max"\n[agents]\nenabled = false\n'
+                'model_reasoning_effort = "xhigh"\n[agents]\nenabled = false\n'
             ),
             "config/agents/explorer.toml": (
                 'name = "explorer"\n'
                 'description = "explorer"\n'
                 'developer_instructions = "LUNA_WORKER CODEX_ORCHESTRA_GLOBAL_POLICY_V1 explorer"\n'
                 'model = "gpt-6-luna"\n'
-                'model_reasoning_effort = "max"\n[agents]\nenabled = false\n'
+                'model_reasoning_effort = "xhigh"\n[agents]\nenabled = false\n'
             ),
         }
         for relative, contents in text.items():
@@ -192,10 +192,10 @@ class GlobalPolicyTests(unittest.TestCase):
         self.home.joinpath("config.toml").write_text(
             contents
             or (
-                'model = "gpt-5.6-luna"\n'
+                'model = "gpt-6-luna"\n'
                 'model_reasoning_effort = "xhigh"\n\n'
                 '[agents]\n'
-                'default_subagent_model = "gpt-5.6-luna"\n'
+                'default_subagent_model = "gpt-6-luna"\n'
                 'default_subagent_reasoning_effort = "xhigh"\n\n'
                 '[agents.default]\n'
                 'description = "legacy default"\n'
@@ -260,7 +260,7 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertTrue(installed_config["plugins"]["example2"]["enabled"])
         self.assertEqual(
             installed_config["agents"]["default"]["description"],
-            "General-purpose fallback subagent using GPT-6 Luna Max.",
+            "General-purpose fallback subagent using GPT-6 Luna XHigh.",
         )
 
     def test_existing_root_selection_is_preserved_and_workers_are_pinned(self) -> None:
@@ -279,10 +279,10 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertEqual(config["model"], "gpt-6-sol")
         self.assertEqual(config["model_reasoning_effort"], "high")
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
-        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "max")
+        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "xhigh")
         self.assertEqual(
             config["agents"]["worker"]["description"],
-            "Execution-focused subagent using GPT-6 Luna Max.",
+            "Execution-focused subagent using GPT-6 Luna XHigh.",
         )
         self.assertEqual(config["personality"], "pragmatic")
         self.assertTrue(config["plugins"]["example"]["enabled"])
@@ -290,14 +290,14 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertEqual(report["model"], "gpt-6-sol")
         self.assertEqual(report["model_reasoning_effort"], "high")
         self.assertEqual(report["default_subagent_model"], "gpt-6-luna")
-        self.assertEqual(report["default_subagent_reasoning_effort"], "max")
+        self.assertEqual(report["default_subagent_reasoning_effort"], "xhigh")
 
     def test_gpt6_research_profiles_and_all_worker_roles_use_requested_models(self) -> None:
         self._write_config()
         global_policy.install(self.home, source_root=self.source)
         for filename, model, effort, marker in (
             ("global-gpt6-sol.config.toml", "gpt-6-sol", "high", "GPT6_SOL_ROOT"),
-            ("global-gpt6-luna.config.toml", "gpt-6-luna", "max", "GPT6_LUNA_ROOT"),
+            ("global-gpt6-luna.config.toml", "gpt-6-luna", "xhigh", "GPT6_LUNA_ROOT"),
         ):
             profile = global_policy._toml_bytes(self.home / filename)
             self.assertEqual(profile["model"], model)
@@ -308,7 +308,7 @@ class GlobalPolicyTests(unittest.TestCase):
         for filename in ("default.toml", "explorer.toml", "worker.toml"):
             role = global_policy._toml_bytes(self.home / "agents" / filename)
             self.assertEqual(role["model"], "gpt-6-luna")
-            self.assertEqual(role["model_reasoning_effort"], "max")
+            self.assertEqual(role["model_reasoning_effort"], "xhigh")
             self.assertFalse(role["agents"]["enabled"])
         for skill in ("luna-orchestra", "sol-orchestra"):
             text = (self.home / "skills" / skill / "SKILL.md").read_text(encoding="utf-8")
@@ -319,7 +319,7 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertIn("hard cap +50%", global_instructions)
         config = global_policy._toml_bytes(self.home / "config.toml")
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
-        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "max")
+        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "xhigh")
         self.assertEqual(global_policy.verify(self.home, source_root=self.source)["verdict"], "PASS")
 
     def test_astra_effort_profiles_are_installed_and_validated(self) -> None:
@@ -397,10 +397,10 @@ class GlobalPolicyTests(unittest.TestCase):
         report = global_policy.install(self.home, source_root=self.source)
         self.assertIn("config.toml", report["changed_files"])
         config = global_policy._toml_bytes(self.home / "config.toml")
-        self.assertEqual(config["model"], "gpt-5.6-luna")
+        self.assertEqual(config["model"], "gpt-6-luna")
         self.assertEqual(config["model_reasoning_effort"], "xhigh")
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
-        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "max")
+        self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "xhigh")
         self.assertEqual(config["agents"]["default"]["config_file"], "./agents/default.toml")
         self.assertEqual(config["agents"]["explorer"]["config_file"], "./agents/explorer.toml")
         self.assertEqual(global_policy.verify(self.home, source_root=self.source)["verdict"], "PASS")

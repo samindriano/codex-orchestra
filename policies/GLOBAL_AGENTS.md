@@ -6,10 +6,10 @@ repository state, tests, data, evidence, metrics, or completed work. Inspect act
 state before material changes; preserve unrelated work and secrets. Validate
 proportionally and report failed or missing checks honestly.
 
-The legacy global root default is GPT-5.6 Luna XHigh (`gpt-5.6-luna`, `xhigh`).
-Configured default, explorer, and worker subagents use GPT-6 Luna Max
-(`gpt-6-luna`, `max`). DIRECT, LIGHT, and HEAVY change execution width only; they
-never select a stronger root model or escalate to Astra.
+The default MAIN/root model and all configured default, explorer, and worker
+subagents are GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`). DIRECT, LIGHT, and HEAVY
+change execution width only; they never change model or effort, or auto-escalate
+to Astra. Sol and Astra root profiles remain explicit user/session overrides only.
 Aim for approximately **+20–50% more willingness to delegate** eligible
 meaningful work than the prior default; hard cap +50%, not a measured guarantee
 or quota. In borderline DIRECT/LIGHT cases, prefer LIGHT with one configured
@@ -29,15 +29,16 @@ or push without authorization. Stage only the task's files. A completed, validat
 coherent implementation may receive one local commit unless the user requested an
 uncommitted review or unrelated changes cannot safely be excluded.
 
-The runtime selects policy, never guessed model identity: legacy Luna profiles
-select `LUNA_ROOT` and `$luna-orchestra`; explicit `global-gpt6-luna` selects
-`GPT6_LUNA_ROOT` and `$luna-orchestra`; explicit `global-gpt6-sol` selects
-`GPT6_SOL_ROOT` and `$sol-orchestra`; an explicitly selected `global-astra-low`,
+The runtime selects policy, never guessed model identity: `global-luna` is a
+backward-compatible alias for GPT-6 Luna XHigh and selects `LUNA_ROOT` and
+`$luna-orchestra`; `global-gpt6-luna` selects `GPT6_LUNA_ROOT` and the same
+GPT-6 Luna XHigh root. Explicit `global-gpt6-sol` selects `GPT6_SOL_ROOT` and
+`$sol-orchestra`; an explicitly selected `global-astra-low`,
 `global-astra-medium`, or backward-compatible `global-astra` profile selects
 `ASTRA_ROOT` and `$astra-decision-orchestrator`.
 `LUNA_WORKER` follows its bounded assignment and loads neither root skill. Load
 only the selected root skill. All configured worker roles stay pinned to GPT-6
-Luna Max in every root profile. Resolve conflicting markers through session
+Luna XHigh in every root profile. Resolve conflicting markers through session
 configuration before delegation; do not infer Astra from task difficulty or
 disagreement.
 
@@ -45,9 +46,9 @@ Prefer one visible MAIN with internal/local workers. MAIN owns final judgment an
 integration. Workers never self-upgrade, spawn nested workers, merge, rebase, or
 force-push. For delegation, use the configured `default`, `explorer`, or `worker`
 roles and omit spawn-level `model` and `reasoning_effort` overrides. Verify the
-effective role metadata is GPT-6 Luna Max. A custom agent file or explicit spawn
+effective role metadata is GPT-6 Luna XHigh. A custom agent file or explicit spawn
 value can override the global default; use a custom role only after verifying its
-effective model and effort are also GPT-6 Luna Max. If any pin is absent or
+effective model and effort are also GPT-6 Luna XHigh. If any pin is absent or
 contradictory, work directly and report the gap instead of assuming it.
 
 Project-local instructions extend these rules; stronger project constraints control
