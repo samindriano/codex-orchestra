@@ -152,18 +152,14 @@ Do not alter frozen targets, folds, holdouts, data sources, metrics, thresholds,
 
 ## Model routing
 
-The user's explicit model choice always wins. Never silently change the root model or reasoning level.
+The user's explicit model choice always wins. Model choice is independent of orchestration level; DIRECT, LIGHT, and HEAVY change execution width only. Never change a model or reasoning effort because of task difficulty, conflict, ambiguity, or review.
 
-When the user has not specified a policy:
+- The default unprofiled root is GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`).
+- `global-gpt6-luna` and the backward-compatible `global-luna` alias select that Luna root.
+- The explicit `global-gpt6-sol` profile selects GPT-6.1 Sol High (`gpt-6.1-sol`, `high`) for MAIN/root.
+- All configured `default`, `explorer`, and `worker` roles stay GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`) under every root profile.
 
-- use a cost-efficient strong model for persistent MAIN/root;
-- normally use the same class for routine workers;
-- use a stronger/expensive model only for a bounded question whose answer can change the decision;
-- return to the normal project model after that checkpoint.
-
-Good escalation cases include unresolved architecture conflict, repeated integration failure, decision-changing methodology certification, suspiciously strong research results, and final high-risk release/promotion review.
-
-Workers do not self-upgrade models. Record `model_used` and `reasoning_level` in handoffs when available.
+Use configured worker roles and omit spawn-level model/effort overrides. Confirm effective role metadata before delegation. If a requested pin cannot be selected or confirmed, work directly and report the gap. Workers never self-upgrade. Astra requires explicit user opt-in and is never selected automatically. Record `model_used` and `reasoning_level` in handoffs when available.
 
 ## Runtime layer
 
