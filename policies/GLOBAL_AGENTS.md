@@ -33,7 +33,8 @@ The runtime selects policy, never guessed model identity: `global-luna` is a
 backward-compatible alias for GPT-6 Luna XHigh and selects `LUNA_ROOT` and
 `$luna-orchestra`; `global-gpt6-luna` selects `GPT6_LUNA_ROOT` and the same
 GPT-6 Luna XHigh root. Explicit `global-gpt6-sol` selects `GPT6_SOL_ROOT` and
-`$sol-orchestra`; an explicitly selected `global-astra-low`,
+`$sol-orchestra` with GPT-6.1 Sol High (`gpt-6.1-sol`) as root; configured
+workers remain GPT-6 Luna XHigh. An explicitly selected `global-astra-low`,
 `global-astra-medium`, or backward-compatible `global-astra` profile selects
 `ASTRA_ROOT` and `$astra-decision-orchestrator`.
 `LUNA_WORKER` follows its bounded assignment and loads neither root skill. Load
