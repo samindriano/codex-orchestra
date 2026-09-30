@@ -41,7 +41,7 @@ MAIN must run the parallelism preflight before substantial implementation and mu
 The user may override this at any time.
 
 - **Root default:** `<exact selected profile/model/effort; e.g. GPT-6.1 Sol High>`
-- **Worker default:** `GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`), independent of root profile`
+- **Worker default:** GPT-6 Luna XHigh, independent of root profile (`gpt-6-luna`, `xhigh)
 - **Escalation model:** `<none by default; Astra only with explicit user opt-in>`
 - **Escalation triggers:** `NO_AUTOMATIC_MODEL_OR_EFFORT_ESCALATION`
 - **Independent external reviewer:** `<optional ChatGPT/research thread or NONE>`
