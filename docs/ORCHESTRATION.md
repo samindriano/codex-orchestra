@@ -131,19 +131,11 @@ MAIN should avoid duplicating worker scopes. High-value MAIN work during concurr
 
 ## Model routing
 
-Model selection is independent of orchestration level. HEAVY does not imply a more expensive root model.
+Model selection is independent of orchestration level. DIRECT, LIGHT, and HEAVY change execution width only.
 
-Default philosophy when the user has not specified otherwise:
+The default unprofiled root is GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`). The explicit `global-gpt6-sol` profile selects GPT-6.1 Sol High (`gpt-6.1-sol`) for MAIN/root. All configured `default`, `explorer`, and `worker` roles stay GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`) across root profiles. Workers never self-upgrade or inherit a Sol root pin.
 
-1. use the cost-efficient strong project default for persistent MAIN/root;
-2. use the same class for routine workers;
-3. buy speed with concurrency before buying persistent premium-model usage when the work is safely parallelizable;
-4. escalate one bounded question/checkpoint to a stronger model only when its judgment is likely to change the decision;
-5. return to the normal model after the checkpoint.
-
-Good stronger-model escalation cases: unresolved architecture conflict, repeated integration failure, methodology certification, suspicious breakthrough, final high-risk release/promotion gate.
-
-Poor escalation cases: routine test fixes, parser edits, file moves, standard refactors, mechanical integration, or simply having a large repository.
+Do not change the root model or reasoning effort based on task size, difficulty, ambiguity, or disagreement. Astra remains manual-only and requires explicit user opt-in.
 
 ## Worker prompt contract
 
