@@ -14,9 +14,8 @@ evidence; they cannot certify current state or authorize changes.
 The default unprofiled root and configured worker roles are GPT-6 Luna XHigh
 (`gpt-6-luna`, `xhigh`). Profiles are below project and CLI configuration in
 native precedence. `global-gpt6-luna` and the backward-compatible `global-luna`
-alias pin the root to GPT-6 Luna XHigh. `global-gpt6-sol` remains a Sol High
-explicit override; Astra remains manual-only. All profiles use GPT-6 Luna XHigh
-workers. The `global-astra-low` and
+alias pin the root to GPT-6 Luna XHigh. `global-gpt6-sol` explicitly selects GPT-6.1 Sol High (`gpt-6.1-sol`) as root;
+all profiles retain GPT-6 Luna XHigh workers. Astra remains manual-only. The `global-astra-low` and
 `global-astra-medium` profiles are
 `MANUAL_EXPERIMENTAL` and `EXPLICIT_USER_OPT_IN`; the backward-compatible
 `global-astra` alias means Medium. The selected profile supplies Astra's effort
