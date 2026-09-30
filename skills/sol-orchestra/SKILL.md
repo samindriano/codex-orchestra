@@ -6,7 +6,7 @@ description: Explicit GPT6_SOL_ROOT override. Keep GPT-6.1 Sol High as the reque
 # Sol Orchestra
 
 Use this policy only when an explicitly selected profile sets `GPT6_SOL_ROOT`.
-That profile pins the root to `gpt-6-sol` / `high`; every configured subagent role
+That profile pins the root to `gpt-6.1-sol` / `high`; every configured subagent role
 is pinned to `gpt-6-luna` / `xhigh`. Do not infer a different model from task
 difficulty, and do not switch to Ultra because it enables automatic delegation.
 If effective session or role metadata contradicts these pins, do not delegate;
