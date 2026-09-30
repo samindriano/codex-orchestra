@@ -61,8 +61,8 @@
 
 
   <rect x="705" y="250" width="240" height="72" rx="12" fill="#fff1f2" stroke="#e11d48" stroke-width="2"/>
-  <text x="825" y="278" text-anchor="middle" class="txt label">Bounded stronger-model</text>
-  <text x="825" y="299" text-anchor="middle" class="txt small">checkpoint (e.g. Sol High)</text>
+  <text x="825" y="278" text-anchor="middle" class="txt label">Explicit GPT-6.1 Sol root</text>
+  <text x="825" y="299" text-anchor="middle" class="txt small">workers remain Luna XHigh</text>
   <path d="M825 322 V438 H555" class="edge"/>
 
   <rect x="704" y="92" width="241" height="92" rx="12" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5"/>
