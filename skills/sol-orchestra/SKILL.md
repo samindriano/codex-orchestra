@@ -1,6 +1,6 @@
 ---
 name: sol-orchestra
-description: Explicit GPT6_SOL_ROOT override. Keep GPT-6 Sol High as the requested root and use configured GPT-6 Luna XHigh roles for bounded independent work.
+description: Explicit GPT6_SOL_ROOT override. Keep GPT-6.1 Sol High as the requested root and use configured GPT-6 Luna XHigh roles for bounded independent work.
 ---
 
 # Sol Orchestra
