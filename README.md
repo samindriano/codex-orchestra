@@ -60,17 +60,17 @@ For research, preserve sequential learning between decision-dependent experiment
 ## Model routing
 
 <p align="center">
-  <img src="docs/assets/model-routing.svg" alt="Parallel orchestration and bounded stronger-model escalation" width="78%">
+  <img src="docs/assets/model-routing.svg" alt="Luna root by default or explicit GPT-6.1 Sol root, with Luna XHigh workers" width="78%">
 </p>
 
 Model strength and orchestration intensity are independent:
 
-- persistent MAIN/root: cost-efficient strong reasoning model;
-- routine workers: usually the same cost-efficient strong model;
-- stronger/expensive model: **bounded decision-changing escalation**, not permanent orchestration overhead;
-- explicit user model policy always wins.
+- Unprofiled MAIN/root: GPT-6 Luna XHigh;
+- Explicit `global-gpt6-sol` MAIN/root: GPT-6.1 Sol High;
+- Configured workers: GPT-6 Luna XHigh under every root profile;
+- Astra: manual-only, explicit user/session selection.
 
-The default root and configured `default`, `explorer`, and `worker` roles use GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`). `global-gpt6-luna` and the backward-compatible `global-luna` alias use that same root. `global-gpt6-sol` and Astra remain explicit user/session overrides; all profiles keep worker roles on GPT-6 Luna XHigh.
+The default unprofiled root and all configured `default`, `explorer`, and `worker` roles use GPT-6 Luna XHigh (`gpt-6-luna`, `xhigh`). `global-gpt6-luna` and the backward-compatible `global-luna` alias select that Luna root. The explicit `global-gpt6-sol` profile uses GPT-6.1 Sol High (`gpt-6.1-sol`) for MAIN/root; workers remain GPT-6 Luna XHigh in every profile. Astra remains a manual user/session choice.
 
 Aim for approximately **+20–50% more willingness to delegate** eligible meaningful work than the prior default; hard cap +50%, not a measured guarantee or quota. Operationally, prefer LIGHT with one configured worker in borderline DIRECT/LIGHT cases when a bounded independent lane is ready, can run alongside MAIN's useful work, and is likely to shorten the critical path. Keep trivial, serial, high-coordination, security/authorization-constrained, or no-ready-lane tasks DIRECT; add workers only for distinct ready lanes, never mechanically per task.
 

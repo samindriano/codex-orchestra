@@ -84,7 +84,7 @@ class GlobalPolicyTests(unittest.TestCase):
             ),
             "config/global-gpt6-sol.config.toml": (
                 'developer_instructions = "GPT6_SOL_ROOT +20–50% hard cap +50% CODEX_ORCHESTRA_GLOBAL_POLICY_V1"\n'
-                'model = "gpt-6-sol"\n'
+                'model = "gpt-6.1-sol"\n'
                 'model_reasoning_effort = "high"\n'
             ),
             "config/agents/default.toml": (
@@ -265,7 +265,7 @@ class GlobalPolicyTests(unittest.TestCase):
 
     def test_existing_root_selection_is_preserved_and_workers_are_pinned(self) -> None:
         self._write_config(
-            'model = "gpt-6-sol"\n'
+            'model = "gpt-6.1-sol"\n'
             'model_reasoning_effort = "high"\n'
             'personality = "pragmatic"\n\n'
             '[agents]\n'
@@ -276,7 +276,7 @@ class GlobalPolicyTests(unittest.TestCase):
         )
         global_policy.install(self.home, source_root=self.source)
         config = global_policy._toml_bytes(self.home / "config.toml")
-        self.assertEqual(config["model"], "gpt-6-sol")
+        self.assertEqual(config["model"], "gpt-6.1-sol")
         self.assertEqual(config["model_reasoning_effort"], "high")
         self.assertEqual(config["agents"]["default_subagent_model"], "gpt-6-luna")
         self.assertEqual(config["agents"]["default_subagent_reasoning_effort"], "xhigh")
@@ -287,7 +287,7 @@ class GlobalPolicyTests(unittest.TestCase):
         self.assertEqual(config["personality"], "pragmatic")
         self.assertTrue(config["plugins"]["example"]["enabled"])
         report = global_policy.verify(self.home, source_root=self.source)
-        self.assertEqual(report["model"], "gpt-6-sol")
+        self.assertEqual(report["model"], "gpt-6.1-sol")
         self.assertEqual(report["model_reasoning_effort"], "high")
         self.assertEqual(report["default_subagent_model"], "gpt-6-luna")
         self.assertEqual(report["default_subagent_reasoning_effort"], "xhigh")
@@ -296,7 +296,7 @@ class GlobalPolicyTests(unittest.TestCase):
         self._write_config()
         global_policy.install(self.home, source_root=self.source)
         for filename, model, effort, marker in (
-            ("global-gpt6-sol.config.toml", "gpt-6-sol", "high", "GPT6_SOL_ROOT"),
+            ("global-gpt6-sol.config.toml", "gpt-6.1-sol", "high", "GPT6_SOL_ROOT"),
             ("global-gpt6-luna.config.toml", "gpt-6-luna", "xhigh", "GPT6_LUNA_ROOT"),
         ):
             profile = global_policy._toml_bytes(self.home / filename)

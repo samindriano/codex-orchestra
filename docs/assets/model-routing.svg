@@ -59,11 +59,10 @@
   <rect x="115" y="502" width="220" height="42" rx="10" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
   <text x="225" y="528" text-anchor="middle" class="txt label">MAIN integrates</text>
 
-  <path d="M555 440 H775 V322" class="edge-red"/>
-  <text x="637" y="430" class="txt small" fill="#dc2626">ambiguous / high-risk</text>
+
   <rect x="705" y="250" width="240" height="72" rx="12" fill="#fff1f2" stroke="#e11d48" stroke-width="2"/>
-  <text x="825" y="278" text-anchor="middle" class="txt label">Bounded stronger-model</text>
-  <text x="825" y="299" text-anchor="middle" class="txt small">checkpoint (e.g. Sol High)</text>
+  <text x="825" y="278" text-anchor="middle" class="txt label">Explicit GPT-6.1 Sol root</text>
+  <text x="825" y="299" text-anchor="middle" class="txt small">workers remain Luna XHigh</text>
   <path d="M825 322 V438 H555" class="edge"/>
 
   <rect x="704" y="92" width="241" height="92" rx="12" fill="#fafafa" stroke="#a1a1aa" stroke-width="1.5"/>
