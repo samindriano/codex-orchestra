@@ -1,8 +1,8 @@
-model = "gpt-6-sol"
+model = "gpt-6.1-sol"
 model_reasoning_effort = "high"
 developer_instructions = """
 Runtime policy: GPT6_SOL_ROOT.
-This is an explicit GPT-6.1 Sol root override: root=gpt-6-sol/high; configured subagents=gpt-6-luna/xhigh.
+This is an explicit GPT-6.1 Sol root override: root=gpt-6.1-sol/high; configured subagents=gpt-6-luna/xhigh.
 Use $sol-orchestra as the sole root operating policy; load no other root orchestration skill.
 Do not infer a different root or worker model from task difficulty, profile names, or prompts.
 If effective role metadata contradicts the configured GPT-6 Luna XHigh worker pin, do not delegate; resolve the mismatch first.
